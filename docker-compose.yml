@@ -1,0 +1,49 @@
+# App + MongoDB on network `app-net`. DB URI is forced to the `mongo` service.
+# Override auth: edit docker/env.docker (local) or inject env in CI — do not ship real secrets.
+services:
+  mongo:
+    image: mongo:7
+    container_name: videosubmitter-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "mongodb://127.0.0.1:27017/admin",
+          "--eval",
+          "db.adminCommand('ping')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  app:
+    build: .
+    container_name: videosubmitter-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - docker/env.docker
+    environment:
+      # Overrides .env.docker: always use the compose service name on the internal network
+      MONGODB_URI: mongodb://mongo:27017/videosubmitter
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  mongo_data:
