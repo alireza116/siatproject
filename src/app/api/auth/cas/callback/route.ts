@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbConnect } from "@/lib/db/connect";
 import { setAuthJwtCookie } from "@/lib/auth/cas-session";
 import { validateCasTicket } from "@/lib/cas/validate";
-import { getCasCallbackUrl } from "@/lib/env";
+import { getCasCallbackUrl, getRequestOrigin } from "@/lib/env";
 import { User } from "@/lib/models/User";
 import { isValidSfuId, normalizeSfuId } from "@/lib/sfu-id";
 import { isBootstrapAdmin } from "@/lib/admin";
@@ -59,17 +59,11 @@ export async function GET(req: NextRequest) {
   });
 
   const dest = user.sfuId ? "/dashboard" : "/onboarding/sfu-id";
-  return NextResponse.redirect(new URL(dest, getBase(req)));
-}
-
-function getBase(req: NextRequest): string {
-  const env = process.env.AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL;
-  if (env) return env.replace(/\/$/, "");
-  return req.nextUrl.origin;
+  return NextResponse.redirect(new URL(dest, getRequestOrigin(req)));
 }
 
 function casErrorUrl(req: NextRequest, message: string): URL {
-  const u = new URL("/", getBase(req));
+  const u = new URL("/", getRequestOrigin(req));
   u.searchParams.set("error", message);
   return u;
 }
