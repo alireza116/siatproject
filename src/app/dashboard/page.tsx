@@ -128,10 +128,17 @@ export default async function DashboardPage() {
 
       {showStudent && (
         <section className={showTeaching ? "mt-12" : "mt-10"}>
-          <h2 className="text-base font-semibold text-foreground">Enrolled classes</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Classes you&apos;ve joined as a student.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Enrolled classes</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Classes you&apos;ve joined as a student.
+              </p>
+            </div>
+            <Link href="/my-submissions" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              My submissions
+            </Link>
+          </div>
           <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
             {learning.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted-foreground">

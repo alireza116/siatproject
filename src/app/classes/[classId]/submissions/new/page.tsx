@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { canAccessClass } from "@/lib/class-access";
+import { canAccessClassOrGlobalAdmin, getStudentSubmissionPrivileges, isClassAppManager } from "@/lib/class-access";
 import { dbConnect } from "@/lib/db/connect";
 import { ClassModel } from "@/lib/models/Class";
 import { leanOne } from "@/lib/mongoose-lean";
@@ -24,7 +24,9 @@ export default async function NewSubmissionPage({
   const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
   if (!cls) notFound();
 
-  const allowed = await canAccessClass(session.user.id, classId);
+  const allowed = await canAccessClassOrGlobalAdmin(session.user.id, classId, {
+    isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
+  });
   if (!allowed) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -39,6 +41,13 @@ export default async function NewSubmissionPage({
     );
   }
 
+  const classManager = await isClassAppManager(session.user.id, classId, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
+  const priv = await getStudentSubmissionPrivileges(session.user.id, classId);
+  const showVisibility = classManager || priv.canChangeVisibility;
+
   return (
     <div className="mx-auto max-w-xl px-4 py-10">
       <Link
@@ -51,7 +60,13 @@ export default async function NewSubmissionPage({
       <p className="mt-1 text-sm text-muted-foreground">
         Add your project links and YouTube demo video.
       </p>
-      <SubmissionForm mode="create" classId={classId} showVisibility />
+      {!showVisibility && (
+        <p className="mt-4 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Visibility defaults to the class setting until your instructor enables public/private
+          controls for you.
+        </p>
+      )}
+      <SubmissionForm mode="create" classId={classId} showVisibility={showVisibility} />
     </div>
   );
 }

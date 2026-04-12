@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/db/connect";
-import { isClassInstructor } from "@/lib/class-access";
+import { isClassAppManager } from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
 import { revalidatePath } from "next/cache";
 
@@ -12,9 +12,12 @@ export async function updateClassSettingsAction(formData: FormData) {
     return { ok: false as const, error: "Not allowed" };
   }
   const classId = String(formData.get("classId") ?? "");
-  const ok = await isClassInstructor(session.user.id, classId);
+  const ok = await isClassAppManager(session.user.id, classId, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
   if (!ok) {
-    return { ok: false as const, error: "Only instructors can update class settings" };
+    return { ok: false as const, error: "Only course staff or admins can update class settings" };
   }
   const defaultVisibility = String(formData.get("defaultVisibility") ?? "");
   const commentsOnPublic = formData.get("commentsOnPublic") === "true";

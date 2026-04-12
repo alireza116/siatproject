@@ -19,6 +19,12 @@ const EnrollmentSchema = new mongoose.Schema(
       enum: ["STUDENT", "ASSISTANT", "INSTRUCTOR"],
       default: "STUDENT",
     },
+    /** STUDENT only — when false (default), student authors cannot edit submission content. */
+    studentCanEditSubmissions: { type: Boolean, default: false },
+    /** STUDENT only — when false (default), student authors cannot delete their own submissions. */
+    studentCanDeleteSubmissions: { type: Boolean, default: false },
+    /** STUDENT only — when false (default), student authors cannot set public/private or comment toggles. */
+    studentCanChangeVisibility: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

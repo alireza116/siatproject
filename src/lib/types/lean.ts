@@ -41,6 +41,9 @@ export type LeanEnrollment = {
   userId: Types.ObjectId;
   role: string;
   createdAt?: Date;
+  studentCanEditSubmissions?: boolean;
+  studentCanDeleteSubmissions?: boolean;
+  studentCanChangeVisibility?: boolean;
 };
 
 export type LeanUser = {

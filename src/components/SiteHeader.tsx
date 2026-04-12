@@ -20,6 +20,12 @@ export async function SiteHeader() {
           {session ? (
             <>
               <Link
+                href="/my-submissions"
+                className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                My submissions
+              </Link>
+              <Link
                 href="/dashboard"
                 className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >

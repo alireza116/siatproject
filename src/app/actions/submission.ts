@@ -3,7 +3,12 @@
 import type { Types } from "mongoose";
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/db/connect";
-import { canAccessClass, idEq, isClassInstructor } from "@/lib/class-access";
+import {
+  canAccessClass,
+  getStudentSubmissionPrivileges,
+  idEq,
+  isClassAppManager,
+} from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
 import { Comment } from "@/lib/models/Comment";
 import { Submission } from "@/lib/models/Submission";
@@ -44,8 +49,12 @@ export async function createSubmissionAction(formData: FormData) {
     return { ok: false as const, error: "Add at least one valid YouTube URL or video ID" };
   }
 
-  const allowed = await canAccessClass(session.user.id, classId);
-  if (!allowed) {
+  const enrolled = await canAccessClass(session.user.id, classId);
+  const classManager = await isClassAppManager(session.user.id, classId, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
+  if (!enrolled && !classManager) {
     return { ok: false as const, error: "Not enrolled in this class" };
   }
 
@@ -64,10 +73,18 @@ export async function createSubmissionAction(formData: FormData) {
 
   const visRaw = String(formData.get("visibility") ?? "");
   const ceRaw = String(formData.get("commentsEnabled") ?? "");
-  const visibility =
+  let visibility =
     visRaw === "PUBLIC" || visRaw === "PRIVATE" ? (visRaw as "PUBLIC" | "PRIVATE") : undefined;
-  const commentsEnabled =
+  let commentsEnabled =
     ceRaw === "true" || ceRaw === "false" ? ceRaw === "true" : undefined;
+
+  if (!classManager) {
+    const p = await getStudentSubmissionPrivileges(session.user.id, classId);
+    if (!p.canChangeVisibility) {
+      visibility = undefined;
+      commentsEnabled = undefined;
+    }
+  }
 
   let sub;
   try {
@@ -90,6 +107,7 @@ export async function createSubmissionAction(formData: FormData) {
   }
 
   revalidatePath(`/classes/${classId}`);
+  revalidatePath("/my-submissions");
   revalidatePath("/gallery");
   revalidatePath(`/gallery/${classId}`);
   return { ok: true as const, id: sub._id.toString() };
@@ -105,13 +123,28 @@ export async function updateSubmissionAction(formData: FormData) {
   const sub = await Submission.findById(submissionId);
   if (!sub) return { ok: false as const, error: "Not found" };
 
-  const instructor = await isClassInstructor(session.user.id, sub.classId.toString());
+  const classIdStr = sub.classId.toString();
+  const classManager = await isClassAppManager(session.user.id, classIdStr, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
   const isAuthor =
     (sub.authorUserIds ?? []).some((id: Types.ObjectId) => idEq(id, session.user.id)) ||
     idEq(sub.createdById, session.user.id);
 
-  if (!instructor && !isAuthor) {
+  if (!classManager && !isAuthor) {
     return { ok: false as const, error: "Cannot edit this submission" };
+  }
+
+  let canChangeVisibility = false;
+  if (classManager) {
+    canChangeVisibility = true;
+  } else if (isAuthor) {
+    const p = await getStudentSubmissionPrivileges(session.user.id, classIdStr);
+    if (!p.canEditSubmissions) {
+      return { ok: false as const, error: "Editing is disabled for your account in this class." };
+    }
+    canChangeVisibility = p.canChangeVisibility;
   }
 
   const title = String(formData.get("title") ?? "").trim();
@@ -141,7 +174,7 @@ export async function updateSubmissionAction(formData: FormData) {
   sub.projectUrls = projectUrls;
   sub.youtubeVideoIds = youtubeVideoIds;
 
-  if (instructor || isAuthor) {
+  if (canChangeVisibility) {
     if (vis === "PUBLIC" || vis === "PRIVATE") {
       sub.visibility = vis;
     }
@@ -152,6 +185,7 @@ export async function updateSubmissionAction(formData: FormData) {
 
   await sub.save();
   revalidatePath(`/classes/${sub.classId}`);
+  revalidatePath("/my-submissions");
   revalidatePath("/gallery");
   revalidatePath(`/gallery/${sub.classId}`);
   revalidatePath(`/gallery/${sub.classId}/${submissionId}`);
@@ -166,13 +200,28 @@ export async function deleteSubmissionAction(submissionId: string) {
   await dbConnect();
   const sub = await Submission.findById(submissionId);
   if (!sub) return { ok: false as const, error: "Not found" };
-  const instructor = await isClassInstructor(session.user.id, sub.classId.toString());
-  if (!instructor) {
-    return { ok: false as const, error: "Only instructors can delete" };
+  const classIdStr = sub.classId.toString();
+  const classManager = await isClassAppManager(session.user.id, classIdStr, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
+  const isAuthor =
+    (sub.authorUserIds ?? []).some((id: Types.ObjectId) => idEq(id, session.user.id)) ||
+    idEq(sub.createdById, session.user.id);
+
+  if (!classManager) {
+    if (!isAuthor) {
+      return { ok: false as const, error: "Not allowed" };
+    }
+    const p = await getStudentSubmissionPrivileges(session.user.id, classIdStr);
+    if (!p.canDeleteSubmissions) {
+      return { ok: false as const, error: "Deleting your submissions is disabled for this class." };
+    }
   }
   await Comment.deleteMany({ submissionId });
   await Submission.deleteOne({ _id: submissionId });
   revalidatePath(`/classes/${sub.classId}`);
+  revalidatePath("/my-submissions");
   revalidatePath("/gallery");
   revalidatePath(`/gallery/${sub.classId}`);
   return { ok: true as const };

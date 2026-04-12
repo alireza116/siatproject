@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { isSubmissionAuthor, canStudentViewSubmissionInClass } from "@/lib/submission-access";
 import { auth } from "@/auth";
 import { deleteSubmissionAction } from "@/app/actions/submission";
-import { canAccessClass, idEq, isClassInstructor } from "@/lib/class-access";
+import {
+  canAccessClassOrGlobalAdmin,
+  getStudentSubmissionPrivileges,
+  isClassAppManager,
+} from "@/lib/class-access";
 import { dbConnect } from "@/lib/db/connect";
 import { leanOne } from "@/lib/mongoose-lean";
 import type {
@@ -45,7 +50,9 @@ export default async function SubmissionDetailPage({
   const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
   if (!cls) notFound();
 
-  const enrolled = await canAccessClass(effectiveUserId, classId);
+  const enrolled = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
+    isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
+  });
   if (!enrolled) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -60,14 +67,22 @@ export default async function SubmissionDetailPage({
     );
   }
 
-  // In preview mode, suppress instructor/author privileges → pure student view
-  const instructor = !viewAsUserId && await isClassInstructor(session.user.id, classId);
-  const isAuthor =
-    !viewAsUserId && (
-      sub.authorUserIds?.some((id) => idEq(id, effectiveUserId)) ||
-      idEq(sub.createdById, effectiveUserId)
-    );
-  const canEdit = instructor || isAuthor;
+  const classManager =
+    !viewAsUserId &&
+    (await isClassAppManager(session.user.id, classId, {
+      globalRole: session.user.role,
+      viewAsActive: false,
+    }));
+  const canView =
+    classManager || canStudentViewSubmissionInClass(sub, cls, effectiveUserId);
+  if (!canView) notFound();
+
+  const isAuthor = !viewAsUserId && isSubmissionAuthor(sub, effectiveUserId);
+  const studentPriv = await getStudentSubmissionPrivileges(effectiveUserId, classId);
+  const canEditContent = classManager || (isAuthor && studentPriv.canEditSubmissions);
+  const canChangeVisUI = classManager || (isAuthor && studentPriv.canChangeVisibility);
+  const canDeleteSubmission =
+    classManager || (isAuthor && studentPriv.canDeleteSubmissions);
 
   const comments = (await Comment.find({ submissionId: sub._id })
     .sort({ createdAt: 1 })
@@ -113,7 +128,7 @@ export default async function SubmissionDetailPage({
             )}
           </div>
         </div>
-        {instructor && (
+        {canDeleteSubmission && (
           <DeleteSubmissionButton
             submissionId={submissionId}
             classId={classId}
@@ -173,16 +188,29 @@ export default async function SubmissionDetailPage({
         </section>
       )}
 
-      {canEdit && (
+      {isAuthor && !classManager && !canEditContent && (
+        <p className="mt-10 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          Editing is turned off for your account in this class. Contact your instructor if you need
+          changes.
+        </p>
+      )}
+
+      {canEditContent && (
         <>
           <Separator className="mt-10" />
           <section className="mt-8">
             <h2 className="text-base font-semibold">Edit submission</h2>
+            {!canChangeVisUI && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Public/private and comment settings are locked for your account; other fields can be
+                updated below.
+              </p>
+            )}
             <SubmissionForm
               mode="edit"
               classId={classId}
               submissionId={submissionId}
-              showVisibility
+              showVisibility={canChangeVisUI}
               initial={{
                 title: sub.title,
                 groupName: sub.groupName,
@@ -212,7 +240,7 @@ export default async function SubmissionDetailPage({
         }))}
         canComment={vis === "PRIVATE" || commentsOk}
         signedInUserId={effectiveUserId}
-        isInstructor={instructor}
+        isInstructor={classManager}
       />
     </div>
   );

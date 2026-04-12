@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { canAccessClass } from "@/lib/class-access";
+import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
+import { canStudentViewSubmissionInClass } from "@/lib/submission-access";
+import { getViewAsUserId } from "@/lib/view-as";
 import { dbConnect } from "@/lib/db/connect";
 import { ClassModel } from "@/lib/models/Class";
 import { Submission } from "@/lib/models/Submission";
@@ -27,13 +29,18 @@ export default async function ClassProjectsPage({
     redirect("/onboarding/sfu-id");
   }
 
+  const viewAsUserId = await getViewAsUserId(session.user.role);
+  const effectiveUserId = viewAsUserId ?? session.user.id;
+
   await dbConnect();
   const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
   if (!cls) {
     notFound();
   }
 
-  const allowed = await canAccessClass(session.user.id, classId);
+  const allowed = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
+    isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
+  });
   if (!allowed) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -48,9 +55,19 @@ export default async function ClassProjectsPage({
     );
   }
 
-  const submissions = (await Submission.find({ classId: cls._id })
+  const allSubmissions = (await Submission.find({ classId: cls._id })
     .sort({ createdAt: -1 })
     .lean()) as unknown as LeanSubmissionFull[];
+
+  const classManager =
+    !viewAsUserId &&
+    (await isClassAppManager(session.user.id, classId, {
+      globalRole: session.user.role,
+      viewAsActive: false,
+    }));
+  const submissions = classManager
+    ? allSubmissions
+    : allSubmissions.filter((s) => canStudentViewSubmissionInClass(s, cls, effectiveUserId));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -62,7 +79,9 @@ export default async function ClassProjectsPage({
       </Link>
       <h1 className="text-2xl font-semibold tracking-tight">Class projects</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        All submissions for this class. Open one to watch demos, follow project links, and leave feedback.
+        {classManager
+          ? "All submissions for this class. Open one to watch demos, follow project links, and leave feedback."
+          : "Public submissions from everyone in the class, plus your own work (including class-only). Open a card to view details and comments."}
       </p>
 
       {submissions.length === 0 ? (

@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/db/connect";
-import { canAccessClass, isClassInstructor } from "@/lib/class-access";
+import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
 import { Comment } from "@/lib/models/Comment";
 import { Submission } from "@/lib/models/Submission";
@@ -34,7 +34,9 @@ export async function addCommentAction(formData: FormData) {
   const cls = rawCls as unknown as LeanClass;
 
   const vis = effectiveVisibility(sub, cls);
-  const enrolled = await canAccessClass(session.user.id, sub.classId.toString());
+  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId.toString(), {
+    isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
+  });
 
   if (vis === "PUBLIC") {
     const commentsOk = effectiveCommentsOnPublic(sub, cls);
@@ -76,9 +78,12 @@ export async function deleteCommentAction(commentId: string) {
   }
   const sub = rawSub as unknown as LeanSubmission;
 
-  const instructor = await isClassInstructor(session.user.id, sub.classId.toString());
+  const canManage = await isClassAppManager(session.user.id, sub.classId.toString(), {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
   const own = c.userId.toString() === session.user.id;
-  if (!instructor && !own) {
+  if (!canManage && !own) {
     return { ok: false as const, error: "Not allowed" };
   }
 

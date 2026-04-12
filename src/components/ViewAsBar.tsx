@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { VIEW_AS_COOKIE } from "@/lib/view-as";
@@ -28,12 +27,12 @@ export async function ViewAsBar() {
         <strong className="font-semibold font-mono">{label}</strong>
         {" "}— this is a read-only student view.
       </span>
-      <Link
+      <a
         href="/admin/preview-exit"
         className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-amber-900 ring-1 ring-amber-300 hover:bg-amber-100"
       >
         Exit preview
-      </Link>
+      </a>
     </div>
   );
 }

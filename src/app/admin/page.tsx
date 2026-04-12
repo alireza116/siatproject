@@ -144,12 +144,12 @@ export default async function AdminPage() {
                         <span className="text-sm text-muted-foreground">{s.name}</span>
                       )}
                     </div>
-                    <Link
+                    <a
                       href={`/admin/preview?userId=${s._id.toString()}`}
                       className={buttonVariants({ variant: "outline", size: "xs" })}
                     >
                       Preview as
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>
