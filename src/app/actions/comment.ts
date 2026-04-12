@@ -17,7 +17,6 @@ export async function addCommentAction(formData: FormData) {
   }
   const submissionId = String(formData.get("submissionId") ?? "");
   const body = String(formData.get("body") ?? "").trim();
-  const parentId = String(formData.get("parentId") ?? "").trim() || undefined;
   if (!body || body.length > 8000) {
     return { ok: false as const, error: "Invalid comment" };
   }
@@ -48,14 +47,17 @@ export async function addCommentAction(formData: FormData) {
     }
   }
 
-  await Comment.create({
-    submissionId,
-    userId: session.user.id,
-    body,
-    parentId: parentId || undefined,
-  });
+  try {
+    await Comment.create({
+      submissionId,
+      userId: session.user.id,
+      body,
+    });
+  } catch {
+    return { ok: false as const, error: "Failed to post comment. Please try again." };
+  }
 
-  revalidatePath(`/gallery/${submissionId}`);
+  revalidatePath(`/gallery/${sub.classId.toString()}/${submissionId}`);
   revalidatePath(`/classes/${sub.classId.toString()}/submissions/${submissionId}`);
   return { ok: true as const };
 }
@@ -80,8 +82,9 @@ export async function deleteCommentAction(commentId: string) {
     return { ok: false as const, error: "Not allowed" };
   }
 
+  await Comment.deleteMany({ parentId: commentId });
   await Comment.deleteOne({ _id: commentId });
-  revalidatePath(`/gallery/${sub._id.toString()}`);
+  revalidatePath(`/gallery/${sub.classId.toString()}/${sub._id.toString()}`);
   revalidatePath(`/classes/${sub.classId.toString()}/submissions/${sub._id.toString()}`);
   return { ok: true as const };
 }

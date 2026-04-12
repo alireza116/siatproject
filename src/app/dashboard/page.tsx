@@ -5,6 +5,10 @@ import { dbConnect } from "@/lib/db/connect";
 import { Enrollment } from "@/lib/models/Enrollment";
 import { ClassModel } from "@/lib/models/Class";
 import { JoinForm } from "@/app/dashboard/join-form";
+import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { getViewAsUserId } from "@/lib/view-as";
 import type { LeanClassFull, LeanEnrollment } from "@/lib/types/lean";
 
 function isTeachingEnrollment(
@@ -30,10 +34,13 @@ export default async function DashboardPage() {
     redirect("/onboarding/sfu-id");
   }
 
-  const isAdmin = session.user.role === "GLOBAL_ADMIN";
+  const viewAsUserId = await getViewAsUserId(session.user.role);
+  const effectiveUserId = viewAsUserId ?? session.user.id;
+  // When previewing as a student, suppress admin privileges so we see the student experience
+  const isAdmin = !viewAsUserId && session.user.role === "GLOBAL_ADMIN";
 
   await dbConnect();
-  const enrollments = (await Enrollment.find({ userId: session.user.id })
+  const enrollments = (await Enrollment.find({ userId: effectiveUserId })
     .sort({ createdAt: -1 })
     .lean()) as unknown as LeanEnrollment[];
 
@@ -46,68 +53,70 @@ export default async function DashboardPage() {
   for (const e of enrollments) {
     const c = byId.get(e.classId.toString());
     if (!c) continue;
-    if (isTeachingEnrollment(e, c, session.user.id)) {
+    if (isTeachingEnrollment(e, c, effectiveUserId)) {
       teaching.push({ e, c });
     }
-    if (isStudentEnrollment(e, c, session.user.id)) {
+    if (isStudentEnrollment(e, c, effectiveUserId)) {
       learning.push({ e, c });
     }
   }
 
   const showTeaching = isAdmin || teaching.length > 0;
-  const showStudent = learning.length > 0 || (!showTeaching);
+  const showStudent = learning.length > 0 || !showTeaching;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {viewAsUserId ? `Previewing as student` : `Welcome back, ${session.user.sfuId}`}
+          </p>
+        </div>
         {isAdmin && (
-          <Link
-            href="/admin"
-            className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
-          >
-            Admin
+          <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Admin settings
           </Link>
         )}
       </div>
 
       {showTeaching && (
         <section className="mt-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-zinc-900">Teaching</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground">Teaching</h2>
             {isAdmin && (
-              <Link
-                href="/classes/new"
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-              >
+              <Link href="/classes/new" className={buttonVariants({ size: "sm" })}>
                 New class
               </Link>
             )}
           </div>
-          <p className="mt-1 text-sm text-zinc-600">
-            Classes you own or lead. Open a class to see settings, or go straight to{" "}
-            <strong>class projects</strong> to review submissions and comments.
-          </p>
-          <div className="mt-4 rounded-lg border border-zinc-200 bg-white">
+          <div className={cn("mt-3 overflow-hidden rounded-xl border border-border bg-card", teaching.length === 0 && "")}>
             {teaching.length === 0 ? (
-              <p className="p-6 text-sm text-zinc-600">
-                You are not teaching any class yet. Create one to get a join code for students.
+              <p className="px-4 py-6 text-sm text-muted-foreground">
+                No classes yet.{" "}
+                {isAdmin && (
+                  <Link href="/classes/new" className="font-medium text-foreground underline underline-offset-4">
+                    Create the first one
+                  </Link>
+                )}
               </p>
             ) : (
-              <ul className="divide-y divide-zinc-100">
+              <ul className="divide-y divide-border">
                 {teaching.map(({ e, c }) => (
                   <li key={e._id.toString()} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
-                    <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-red-800">
-                      <p className="font-medium">{c.title}</p>
-                      <p className="text-xs text-zinc-500">
-                        Role: {e.role} · Code: <span className="font-mono">{c.joinCode}</span>
+                    <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-foreground">
+                      <p className="font-medium text-foreground">{c.title}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        <span className="font-mono">{c.joinCode}</span>
+                        {" · "}
+                        <Badge variant="secondary" className="text-[10px] py-0">{e.role}</Badge>
                       </p>
                     </Link>
                     <Link
                       href={`/classes/${c._id}/projects`}
-                      className="shrink-0 text-sm font-medium text-red-800 underline"
+                      className="shrink-0 text-sm font-medium text-foreground underline underline-offset-4"
                     >
-                      Class projects
+                      View projects
                     </Link>
                   </li>
                 ))}
@@ -119,32 +128,28 @@ export default async function DashboardPage() {
 
       {showStudent && (
         <section className={showTeaching ? "mt-12" : "mt-10"}>
-          <h2 className="text-lg font-semibold text-zinc-900">Your classes (as student)</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Join with a code from your instructor, then open <strong>class projects</strong> to see
-            everyone’s submissions and leave feedback.
+          <h2 className="text-base font-semibold text-foreground">Enrolled classes</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Classes you&apos;ve joined as a student.
           </p>
-          <div className="mt-4 rounded-lg border border-zinc-200 bg-white">
+          <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
             {learning.length === 0 ? (
-              <p className="p-6 text-sm text-zinc-600">
-                You have not joined any class as a student yet. Use the form below with your join
-                code.
+              <p className="px-4 py-6 text-sm text-muted-foreground">
+                You haven&apos;t joined any class yet. Use the form below with a join code from your instructor.
               </p>
             ) : (
-              <ul className="divide-y divide-zinc-100">
+              <ul className="divide-y divide-border">
                 {learning.map(({ e, c }) => (
                   <li key={e._id.toString()} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
-                    <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-red-800">
-                      <p className="font-medium">{c.title}</p>
-                      <p className="text-xs text-zinc-500">
-                        Join code: <span className="font-mono">{c.joinCode}</span>
-                      </p>
+                    <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-foreground">
+                      <p className="font-medium text-foreground">{c.title}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground font-mono">{c.joinCode}</p>
                     </Link>
                     <Link
                       href={`/classes/${c._id}/projects`}
-                      className="shrink-0 text-sm font-medium text-red-800 underline"
+                      className="shrink-0 text-sm font-medium text-foreground underline underline-offset-4"
                     >
-                      Class projects
+                      View projects
                     </Link>
                   </li>
                 ))}

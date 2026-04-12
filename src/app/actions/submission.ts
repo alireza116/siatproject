@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { dbConnect } from "@/lib/db/connect";
 import { canAccessClass, idEq, isClassInstructor } from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
+import { Comment } from "@/lib/models/Comment";
 import { Submission } from "@/lib/models/Submission";
 import { User } from "@/lib/models/User";
 import { extractYoutubeVideoIds, isAllowedProjectUrl } from "@/lib/youtube";
@@ -27,6 +28,7 @@ export async function createSubmissionAction(formData: FormData) {
   const classId = String(formData.get("classId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const groupName = String(formData.get("groupName") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || undefined;
   const projectUrls = parseLines(String(formData.get("projectUrls") ?? ""));
   const youtubeRaw = parseLines(String(formData.get("youtubeUrls") ?? ""));
   if (!title || !groupName) {
@@ -67,22 +69,29 @@ export async function createSubmissionAction(formData: FormData) {
   const commentsEnabled =
     ceRaw === "true" || ceRaw === "false" ? ceRaw === "true" : undefined;
 
-  const sub = await Submission.create({
-    classId,
-    groupName,
-    title,
-    projectUrls,
-    youtubeVideoIds,
-    authorUserIds: [session.user.id],
-    authorNames: [me.name ?? "Student"],
-    authorSfuIds: [me.sfuId],
-    createdById: session.user.id,
-    ...(visibility ? { visibility } : {}),
-    ...(typeof commentsEnabled === "boolean" ? { commentsEnabled } : {}),
-  });
+  let sub;
+  try {
+    sub = await Submission.create({
+      classId,
+      groupName,
+      title,
+      description,
+      projectUrls,
+      youtubeVideoIds,
+      authorUserIds: [session.user.id],
+      authorNames: [me.name ?? "Student"],
+      authorSfuIds: [me.sfuId],
+      createdById: session.user.id,
+      ...(visibility ? { visibility } : {}),
+      ...(typeof commentsEnabled === "boolean" ? { commentsEnabled } : {}),
+    });
+  } catch {
+    return { ok: false as const, error: "Failed to save submission. Please try again." };
+  }
 
   revalidatePath(`/classes/${classId}`);
   revalidatePath("/gallery");
+  revalidatePath(`/gallery/${classId}`);
   return { ok: true as const, id: sub._id.toString() };
 }
 
@@ -107,6 +116,7 @@ export async function updateSubmissionAction(formData: FormData) {
 
   const title = String(formData.get("title") ?? "").trim();
   const groupName = String(formData.get("groupName") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || undefined;
   const projectUrls = parseLines(String(formData.get("projectUrls") ?? ""));
   const youtubeRaw = parseLines(String(formData.get("youtubeUrls") ?? ""));
   const vis = String(formData.get("visibility") ?? "");
@@ -127,6 +137,7 @@ export async function updateSubmissionAction(formData: FormData) {
 
   sub.title = title;
   sub.groupName = groupName;
+  sub.description = description ?? null;
   sub.projectUrls = projectUrls;
   sub.youtubeVideoIds = youtubeVideoIds;
 
@@ -141,8 +152,9 @@ export async function updateSubmissionAction(formData: FormData) {
 
   await sub.save();
   revalidatePath(`/classes/${sub.classId}`);
-  revalidatePath(`/gallery/${submissionId}`);
   revalidatePath("/gallery");
+  revalidatePath(`/gallery/${sub.classId}`);
+  revalidatePath(`/gallery/${sub.classId}/${submissionId}`);
   return { ok: true as const };
 }
 
@@ -158,9 +170,10 @@ export async function deleteSubmissionAction(submissionId: string) {
   if (!instructor) {
     return { ok: false as const, error: "Only instructors can delete" };
   }
+  await Comment.deleteMany({ submissionId });
   await Submission.deleteOne({ _id: submissionId });
   revalidatePath(`/classes/${sub.classId}`);
   revalidatePath("/gallery");
-  revalidatePath(`/gallery/${submissionId}`);
+  revalidatePath(`/gallery/${sub.classId}`);
   return { ok: true as const };
 }

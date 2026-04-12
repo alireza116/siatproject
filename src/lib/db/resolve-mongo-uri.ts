@@ -7,7 +7,7 @@ declare global {
 
 /**
  * Resolves the MongoDB connection string.
- * - If `MONGODB_URI` is set → use it (Docker, Atlas, local mongod).
+ * - If `MONGODB_URI` is set → use it (Atlas, local mongod, etc.).
  * - If unset in **development** → start a one-off MongoDB Memory Server (downloads a `mongod` binary on first run).
  * - In **production** → `MONGODB_URI` is required.
  */
@@ -19,7 +19,7 @@ export async function resolveMongoUri(): Promise<string> {
 
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "MONGODB_URI is required in production. In Docker Compose it is set automatically; otherwise set it to your Atlas or self-hosted URI."
+      "MONGODB_URI is required in production. Set it to your MongoDB Atlas or self-hosted connection string."
     );
   }
 

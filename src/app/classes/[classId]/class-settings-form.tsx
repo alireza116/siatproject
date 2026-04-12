@@ -3,83 +3,78 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateClassSettingsAction } from "@/app/actions/class-settings";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type Props = {
   classId: string;
   defaultVisibility: string;
   commentsOnPublic: boolean;
-  allowGroupSubmissions: boolean;
 };
 
-export function ClassSettingsForm(p: Props) {
+export function ClassSettingsForm({ classId, defaultVisibility, commentsOnPublic }: Props) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   return (
-    <form
-      className="mt-8 rounded-lg border border-zinc-200 bg-white p-6"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setPending(true);
-        setErr(null);
-        const fd = new FormData(e.currentTarget);
-        const r = await updateClassSettingsAction(fd);
-        setPending(false);
-        if (!r.ok) {
-          setErr(r.error);
-          return;
-        }
-        router.refresh();
-      }}
-    >
-      <input type="hidden" name="classId" value={p.classId} />
-      <h2 className="text-sm font-semibold">Class settings (instructor)</h2>
-      {err && (
-        <p className="mt-2 text-sm text-red-600" role="alert">
-          {err}
-        </p>
-      )}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="text-zinc-700">Default visibility for new submissions</span>
+    <div>
+      <h2 className="text-base font-semibold">Class settings</h2>
+      <form
+        className="mt-4 space-y-5"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setPending(true);
+          setErr(null);
+          const fd = new FormData(e.currentTarget);
+          const r = await updateClassSettingsAction(fd);
+          setPending(false);
+          if (!r.ok) {
+            setErr(r.error);
+            return;
+          }
+          router.refresh();
+        }}
+      >
+        <input type="hidden" name="classId" value={classId} />
+
+        <div className="space-y-2">
+          <Label htmlFor="defaultVisibility">Default visibility for new submissions</Label>
           <select
+            id="defaultVisibility"
             name="defaultVisibility"
-            defaultValue={p.defaultVisibility}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            defaultValue={defaultVisibility}
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <option value="PRIVATE">Private (class only)</option>
             <option value="PUBLIC">Public (gallery)</option>
           </select>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="commentsOnPublic"
-            value="true"
-            defaultChecked={p.commentsOnPublic}
-            className="rounded border-zinc-300"
-          />
-          Allow comments on public submissions
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="allowGroupSubmissions"
-            value="true"
-            defaultChecked={p.allowGroupSubmissions}
-            className="rounded border-zinc-300"
-          />
-          Allow group submissions
-        </label>
-      </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className="mt-4 rounded-lg border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm font-medium hover:bg-zinc-200 disabled:opacity-60"
-      >
-        {pending ? "Saving…" : "Save settings"}
-      </button>
-    </form>
+        </div>
+
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="commentsOnPublic"
+              value="true"
+              defaultChecked={commentsOnPublic}
+              className="h-4 w-4 rounded border-input accent-foreground"
+            />
+            <span>Allow comments on public submissions</span>
+          </label>
+        </div>
+
+        {err && (
+          <Alert variant="destructive">
+            <AlertDescription>{err}</AlertDescription>
+          </Alert>
+        )}
+
+        <Button type="submit" disabled={pending} variant="secondary" size="sm">
+          {pending ? "Saving…" : "Save settings"}
+        </Button>
+      </form>
+    </div>
   );
 }

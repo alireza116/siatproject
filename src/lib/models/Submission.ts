@@ -10,6 +10,7 @@ const SubmissionSchema = new mongoose.Schema(
     },
     groupName: { type: String, required: true },
     title: { type: String, required: true },
+    description: { type: String },
     projectUrls: [{ type: String }],
     youtubeVideoIds: [{ type: String }],
     authorUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

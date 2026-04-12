@@ -18,7 +18,6 @@ export async function updateClassSettingsAction(formData: FormData) {
   }
   const defaultVisibility = String(formData.get("defaultVisibility") ?? "");
   const commentsOnPublic = formData.get("commentsOnPublic") === "true";
-  const allowGroupSubmissions = formData.get("allowGroupSubmissions") === "true";
 
   await dbConnect();
   const cls = await ClassModel.findById(classId);
@@ -28,7 +27,6 @@ export async function updateClassSettingsAction(formData: FormData) {
     cls.defaultVisibility = defaultVisibility;
   }
   cls.commentsOnPublic = commentsOnPublic;
-  cls.allowGroupSubmissions = allowGroupSubmissions;
   await cls.save();
 
   revalidatePath(`/classes/${classId}`);

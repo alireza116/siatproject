@@ -9,6 +9,9 @@ import { Submission } from "@/lib/models/Submission";
 import { leanOne } from "@/lib/mongoose-lean";
 import { effectiveVisibility } from "@/lib/visibility";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
+import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export default async function ClassProjectsPage({
   params,
@@ -33,9 +36,12 @@ export default async function ClassProjectsPage({
   const allowed = await canAccessClass(session.user.id, classId);
   if (!allowed) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-zinc-600">You are not enrolled in this class.</p>
-        <Link href="/dashboard" className="mt-4 inline-block text-sm underline">
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <p className="text-muted-foreground">You are not enrolled in this class.</p>
+        <Link
+          href="/dashboard"
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}
+        >
           Dashboard
         </Link>
       </div>
@@ -48,23 +54,27 @@ export default async function ClassProjectsPage({
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
-      <Link href={`/classes/${classId}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+      <Link
+        href={`/classes/${classId}`}
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2 text-muted-foreground")}
+      >
         ← {cls.title}
       </Link>
-      <h1 className="mt-4 text-2xl font-semibold">Class projects</h1>
-      <p className="mt-2 max-w-2xl text-sm text-zinc-600">
-        Every submission for this class is listed here. Open one to watch embedded demos, follow
-        project links, and read or write feedback in the comments.
+      <h1 className="text-2xl font-semibold tracking-tight">Class projects</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        All submissions for this class. Open one to watch demos, follow project links, and leave feedback.
       </p>
 
       {submissions.length === 0 ? (
-        <p className="mt-10 rounded-lg border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-600">
-          No submissions yet.{" "}
-          <Link href={`/classes/${classId}/submissions/new`} className="font-medium text-red-800 underline">
+        <div className="mt-10 rounded-xl border border-border bg-card px-8 py-12 text-center">
+          <p className="text-sm text-muted-foreground">No submissions yet.</p>
+          <Link
+            href={`/classes/${classId}/submissions/new`}
+            className={cn(buttonVariants({ size: "sm" }), "mt-3")}
+          >
             Create the first submission
           </Link>
-          .
-        </p>
+        </div>
       ) : (
         <ul className="mt-8 grid gap-4 sm:grid-cols-2">
           {submissions.map((s) => {
@@ -74,10 +84,10 @@ export default async function ClassProjectsPage({
               <li key={s._id.toString()}>
                 <Link
                   href={`/classes/${classId}/submissions/${s._id}`}
-                  className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-300 hover:shadow"
+                  className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-foreground/20 hover:shadow"
                 >
                   {thumb ? (
-                    <div className="relative aspect-video bg-zinc-900">
+                    <div className="relative aspect-video bg-muted">
                       <Image
                         src={`https://img.youtube.com/vi/${thumb}/mqdefault.jpg`}
                         alt=""
@@ -87,20 +97,29 @@ export default async function ClassProjectsPage({
                       />
                     </div>
                   ) : (
-                    <div className="flex aspect-video items-center justify-center bg-zinc-100 text-xs text-zinc-500">
+                    <div className="flex aspect-video items-center justify-center bg-muted text-xs text-muted-foreground">
                       No video
                     </div>
                   )}
                   <div className="flex flex-1 flex-col p-4">
-                    <p className="font-medium text-zinc-900">{s.title}</p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {s.groupName} · {s.authorSfuIds?.join(", ")}
+                    <p className="font-medium text-foreground">{s.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {s.groupName}
+                      {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
                     </p>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {vis === "PUBLIC" ? "Public" : "Class only"} ·{" "}
-                      {new Date(s.createdAt).toLocaleDateString()}
-                    </p>
-                    <span className="mt-3 text-sm font-medium text-red-800">Open & comment →</span>
+                    {s.description && (
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                        {s.description}
+                      </p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between">
+                      <Badge variant={vis === "PUBLIC" ? "secondary" : "outline"} className="text-[10px]">
+                        {vis === "PUBLIC" ? "Public" : "Class only"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(s.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               </li>

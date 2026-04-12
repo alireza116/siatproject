@@ -19,12 +19,12 @@ export type LeanClassFull = LeanClass & {
   description?: string;
   joinCode: string;
   ownerId: Types.ObjectId;
-  allowGroupSubmissions: boolean;
 };
 
 export type LeanSubmissionFull = LeanSubmission & {
   title: string;
   groupName: string;
+  description?: string;
   projectUrls: string[];
   youtubeVideoIds: string[];
   authorUserIds?: Types.ObjectId[];

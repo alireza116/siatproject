@@ -1,39 +1,47 @@
 import Link from "next/link";
-import { listPublicSubmissions } from "@/lib/gallery";
+import { listClassesWithPublicSubmissions } from "@/lib/gallery";
+import { Badge } from "@/components/ui/badge";
 
 export default async function GalleryPage() {
-  const items = await listPublicSubmissions();
+  const classes = await listClassesWithPublicSubmissions();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Public gallery</h1>
-      <p className="mt-2 text-sm text-zinc-600">
-        Submissions instructors or authors marked as public appear here.
+      <h1 className="text-2xl font-semibold tracking-tight">Gallery</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Browse public project submissions by class.
       </p>
-      <ul className="mt-8 divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
-        {items.length === 0 ? (
-          <li className="p-6 text-sm text-zinc-600">Nothing public yet.</li>
+
+      <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
+        {classes.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            Nothing public yet.
+          </p>
         ) : (
-          items.map((s) => (
-            <li key={s._id}>
-              <Link
-                href={`/gallery/${s._id}`}
-                className="flex flex-col gap-1 px-4 py-4 hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="font-medium">{s.title}</p>
-                  <p className="text-xs text-zinc-500">
-                    {s.classTitle} · {s.groupName}
-                  </p>
-                </div>
-                <span className="text-xs text-zinc-400">
-                  {new Date(s.createdAt).toLocaleDateString()}
-                </span>
-              </Link>
-            </li>
-          ))
+          <ul className="divide-y divide-border">
+            {classes.map((c) => (
+              <li key={c._id}>
+                <Link
+                  href={`/gallery/${c._id}`}
+                  className="flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-muted/50"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">{c.title}</p>
+                    {c.description && (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {c.description}
+                      </p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="shrink-0 text-xs">
+                    {c.publicCount} {c.publicCount === 1 ? "project" : "projects"}
+                  </Badge>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
-      </ul>
+      </div>
     </div>
   );
 }

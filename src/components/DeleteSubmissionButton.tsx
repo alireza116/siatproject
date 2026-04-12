@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   submissionId: string;
@@ -14,24 +15,25 @@ export function DeleteSubmissionButton({ submissionId, classId, action }: Props)
   const [pending, setPending] = useState(false);
 
   return (
-    <button
+    <Button
       type="button"
+      variant="destructive"
+      size="sm"
       disabled={pending}
-      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:opacity-60"
       onClick={async () => {
-        if (!confirm("Permanently delete this submission and its comments?")) return;
+        if (!confirm("Permanently delete this submission and all its comments?")) return;
         setPending(true);
         const r = await action(submissionId);
         setPending(false);
         if (!r.ok) {
-          alert(r.error ?? "Failed");
+          alert(r.error ?? "Failed to delete");
           return;
         }
         router.push(`/classes/${classId}`);
         router.refresh();
       }}
     >
-      {pending ? "…" : "Delete submission"}
-    </button>
+      {pending ? "Deleting…" : "Delete submission"}
+    </Button>
   );
 }

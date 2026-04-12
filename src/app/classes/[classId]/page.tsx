@@ -8,6 +8,11 @@ import { Submission } from "@/lib/models/Submission";
 import { leanOne } from "@/lib/mongoose-lean";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
 import { ClassSettingsForm } from "./class-settings-form";
+import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { getViewAsUserId } from "@/lib/view-as";
 
 export default async function ClassPage({
   params,
@@ -23,97 +28,125 @@ export default async function ClassPage({
     redirect("/onboarding/sfu-id");
   }
 
+  const viewAsUserId = await getViewAsUserId(session.user.role);
+  const effectiveUserId = viewAsUserId ?? session.user.id;
+
   await dbConnect();
   const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
   if (!cls) {
     notFound();
   }
 
-  const allowed = await canAccessClass(session.user.id, classId);
+  const allowed = await canAccessClass(effectiveUserId, classId);
   if (!allowed) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16">
-        <p className="text-zinc-600">You are not enrolled in this class.</p>
-        <Link href="/dashboard" className="mt-4 inline-block text-sm text-red-800 underline">
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <p className="text-muted-foreground">You are not enrolled in this class.</p>
+        <Link
+          href="/dashboard"
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}
+        >
           Back to dashboard
         </Link>
       </div>
     );
   }
 
-  const instructor = await isClassInstructor(session.user.id, classId);
+  // In preview mode, show the student perspective (no instructor settings)
+  const instructor = !viewAsUserId && await isClassInstructor(session.user.id, classId);
   const submissions = (await Submission.find({ classId: cls._id })
     .sort({ createdAt: -1 })
     .lean()) as unknown as LeanSubmissionFull[];
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
-      <Link href="/dashboard" className="text-sm text-zinc-600 hover:text-zinc-900">
+      <Link
+        href="/dashboard"
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2 text-muted-foreground")}
+      >
         ← Dashboard
       </Link>
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{cls.title}</h1>
-          {cls.description && <p className="mt-2 text-sm text-zinc-600">{cls.description}</p>}
-          {!instructor && (
-            <p className="mt-2 text-xs text-zinc-500">
-              Submission options and visibility for this class are set by your instructor.
-            </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{cls.title}</h1>
+          {cls.description && (
+            <p className="mt-1 text-sm text-muted-foreground">{cls.description}</p>
           )}
           {instructor && (
-            <p className="mt-2 text-xs text-zinc-500">
-              Join code: <span className="font-mono font-medium">{cls.joinCode}</span>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Join code:{" "}
+              <code className="rounded bg-muted px-1 font-mono font-medium text-foreground">
+                {cls.joinCode}
+              </code>
             </p>
           )}
-          <p className="mt-3">
-            <Link
-              href={`/classes/${classId}/projects`}
-              className="text-sm font-medium text-red-800 underline"
-            >
-              Class projects — browse submissions & comments
-            </Link>
-          </p>
         </div>
-        <Link
-          href={`/classes/${classId}/submissions/new`}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-        >
-          New submission
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/classes/${classId}/projects`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            View projects
+          </Link>
+          <Link
+            href={`/classes/${classId}/submissions/new`}
+            className={buttonVariants({ size: "sm" })}
+          >
+            New submission
+          </Link>
+        </div>
       </div>
 
       {instructor && (
-        <ClassSettingsForm
-          classId={classId}
-          defaultVisibility={cls.defaultVisibility}
-          commentsOnPublic={cls.commentsOnPublic}
-          allowGroupSubmissions={cls.allowGroupSubmissions}
-        />
+        <>
+          <Separator className="my-8" />
+          <ClassSettingsForm
+            classId={classId}
+            defaultVisibility={cls.defaultVisibility}
+            commentsOnPublic={cls.commentsOnPublic}
+          />
+        </>
       )}
 
-      <h2 className="mt-10 text-lg font-medium">Submissions</h2>
-      <ul className="mt-4 divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
-        {submissions.length === 0 ? (
-          <li className="p-6 text-sm text-zinc-600">No submissions yet.</li>
-        ) : (
-          submissions.map((s) => (
-            <li key={s._id.toString()}>
+      <div className="mt-10">
+        <h2 className="text-base font-semibold">Submissions</h2>
+        <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+          {submissions.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">No submissions yet.</p>
               <Link
-                href={`/classes/${classId}/submissions/${s._id}`}
-                className="flex items-center justify-between gap-4 px-4 py-4 hover:bg-zinc-50"
+                href={`/classes/${classId}/submissions/new`}
+                className={cn(buttonVariants({ size: "sm" }), "mt-3")}
               >
-                <div>
-                  <p className="font-medium">{s.title}</p>
-                  <p className="text-xs text-zinc-500">
-                    {s.groupName} · {s.authorSfuIds.join(", ")}
-                  </p>
-                </div>
-                <span className="text-sm text-zinc-500">View →</span>
+                Create the first submission
               </Link>
-            </li>
-          ))
-        )}
-      </ul>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {submissions.map((s) => (
+                <li key={s._id.toString()}>
+                  <Link
+                    href={`/classes/${classId}/submissions/${s._id}`}
+                    className="flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-muted/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">{s.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {s.groupName}
+                        {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 text-xs">
+                      View →
+                    </Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

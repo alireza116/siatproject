@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SignInCas } from "@/components/SignInCas";
+import { SignInGoogle } from "@/components/SignInGoogle";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 
 export default async function HomePage({
   searchParams,
@@ -18,31 +21,57 @@ export default async function HomePage({
 
   const sp = await searchParams;
   const enableCas = process.env.ENABLE_CAS === "true";
+  const enableGoogle = process.env.ENABLE_GOOGLE === "true";
+  const googleConfigured =
+    Boolean(process.env.AUTH_GOOGLE_ID?.trim()) &&
+    Boolean(process.env.AUTH_GOOGLE_SECRET?.trim());
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">SFU Project Hub</h1>
-      <p className="mt-3 text-base text-zinc-600">
-        Submit group project links, browse class work, and leave feedback on classmates&apos; submissions.
-      </p>
-      {sp.error && (
-        <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {decodeURIComponent(sp.error)}
-        </p>
-      )}
-      <div className="mt-8 flex flex-col gap-3">
-        {enableCas && <SignInCas />}
-        {!enableCas && (
-          <p className="text-sm text-amber-800">
-            Set <code className="rounded bg-amber-100 px-1">ENABLE_CAS=true</code> in your environment to enable sign-in.
+    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-16">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="space-y-1 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">SFU Project Hub</h1>
+          <p className="text-sm text-muted-foreground">
+            Submit projects, watch demos, and leave feedback
           </p>
+        </div>
+
+        {sp.error && (
+          <Alert variant="destructive">
+            <AlertDescription>{decodeURIComponent(sp.error)}</AlertDescription>
+          </Alert>
         )}
+
+        <div className="space-y-3">
+          {enableCas && <SignInCas />}
+          {enableGoogle && googleConfigured && <SignInGoogle callbackUrl="/dashboard" />}
+          {enableGoogle && !googleConfigured && (
+            <Alert>
+              <AlertDescription>
+                Google sign-in is enabled but <code className="rounded bg-muted px-1">AUTH_GOOGLE_ID</code> or{" "}
+                <code className="rounded bg-muted px-1">AUTH_GOOGLE_SECRET</code> is missing.
+              </AlertDescription>
+            </Alert>
+          )}
+          {!enableCas && !enableGoogle && (
+            <Alert>
+              <AlertDescription>
+                No sign-in method is enabled. Set{" "}
+                <code className="rounded bg-muted px-1">ENABLE_CAS=true</code> or{" "}
+                <code className="rounded bg-muted px-1">ENABLE_GOOGLE=true</code>.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <Separator />
+
+        <p className="text-center text-sm text-muted-foreground">
+          <Link href="/gallery" className="hover:text-foreground underline underline-offset-4">
+            Browse the public gallery
+          </Link>
+        </p>
       </div>
-      <p className="mt-8 text-center text-sm text-zinc-500">
-        <Link href="/gallery" className="text-zinc-700 underline">
-          Public gallery
-        </Link>
-      </p>
     </div>
   );
 }

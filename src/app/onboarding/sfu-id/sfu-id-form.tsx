@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateSfuIdAction } from "@/app/actions/sfu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function SfuIdForm() {
   const router = useRouter();
@@ -11,7 +15,7 @@ export function SfuIdForm() {
 
   return (
     <form
-      className="mt-8 space-y-4"
+      className="space-y-4"
       action={async (fd) => {
         setPending(true);
         setErr(null);
@@ -25,31 +29,24 @@ export function SfuIdForm() {
         router.refresh();
       }}
     >
-      <div>
-        <label htmlFor="sfuId" className="block text-sm font-medium text-zinc-700">
-          SFU ID
-        </label>
-        <input
+      <div className="space-y-2">
+        <Label htmlFor="sfuId">SFU ID</Label>
+        <Input
           id="sfuId"
           name="sfuId"
           required
           autoComplete="username"
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
           placeholder="e.g. jsmith or 123456789"
         />
       </div>
       {err && (
-        <p className="text-sm text-red-600" role="alert">
-          {err}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{err}</AlertDescription>
+        </Alert>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending} className="w-full" size="lg">
         {pending ? "Saving…" : "Continue"}
-      </button>
+      </Button>
     </form>
   );
 }

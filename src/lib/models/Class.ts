@@ -17,7 +17,6 @@ const ClassSchema = new mongoose.Schema(
       default: "PRIVATE",
     },
     commentsOnPublic: { type: Boolean, default: true },
-    allowGroupSubmissions: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

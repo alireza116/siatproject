@@ -6,6 +6,11 @@ import {
   createSubmissionAction,
   updateSubmissionAction,
 } from "@/app/actions/submission";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type Mode = "create" | "edit";
 
@@ -16,6 +21,7 @@ type Props = {
   initial?: {
     title: string;
     groupName: string;
+    description?: string;
     projectUrls: string;
     youtubeUrls: string;
     visibility?: string;
@@ -37,7 +43,7 @@ export function SubmissionForm({
 
   return (
     <form
-      className="mt-6 space-y-4"
+      className="mt-6 space-y-5"
       onSubmit={async (e) => {
         e.preventDefault();
         setPending(true);
@@ -63,83 +69,90 @@ export function SubmissionForm({
       {mode === "edit" && submissionId && (
         <input type="hidden" name="submissionId" value={submissionId} />
       )}
-      <div>
-        <label className="block text-sm font-medium">Title</label>
-        <input
-          name="title"
-          required
-          defaultValue={initial?.title}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
-        />
+
+      <div className="space-y-2">
+        <Label>Title</Label>
+        <Input name="title" required defaultValue={initial?.title} placeholder="My Project" />
       </div>
-      <div>
-        <label className="block text-sm font-medium">Group name</label>
-        <input
-          name="groupName"
-          required
-          defaultValue={initial?.groupName}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
-        />
+
+      <div className="space-y-2">
+        <Label>Group name</Label>
+        <Input name="groupName" required defaultValue={initial?.groupName} placeholder="Team Alpha" />
       </div>
-      <div>
-        <label className="block text-sm font-medium">Project URLs (one per line)</label>
-        <textarea
-          name="projectUrls"
+
+      <div className="space-y-2">
+        <Label>Abstract <span className="text-muted-foreground font-normal">(optional)</span></Label>
+        <Textarea
+          name="description"
           rows={4}
-          defaultValue={initial?.projectUrls}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm"
-          placeholder="https://github.com/..."
+          defaultValue={initial?.description}
+          placeholder="Briefly describe your project — what it does, the problem it solves, and your key technical decisions…"
         />
       </div>
-      <div>
-        <label className="block text-sm font-medium">YouTube URLs or video IDs (one per line)</label>
-        <textarea
+
+      <div className="space-y-2">
+        <Label>YouTube URLs or video IDs <span className="text-destructive">*</span></Label>
+        <Textarea
           name="youtubeUrls"
           rows={3}
           required
           defaultValue={initial?.youtubeUrls}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm"
-          placeholder="https://www.youtube.com/watch?v=..."
+          className="font-mono text-xs"
+          placeholder={"https://www.youtube.com/watch?v=...\nhttps://youtu.be/..."}
         />
+        <p className="text-xs text-muted-foreground">One per line.</p>
       </div>
+
+      <div className="space-y-2">
+        <Label>Project URLs <span className="text-muted-foreground font-normal">(optional)</span></Label>
+        <Textarea
+          name="projectUrls"
+          rows={3}
+          defaultValue={initial?.projectUrls}
+          className="font-mono text-xs"
+          placeholder={"https://github.com/...\nhttps://..."}
+        />
+        <p className="text-xs text-muted-foreground">One per line.</p>
+      </div>
+
       {showVisibility && (
-        <>
-          <div>
-            <label className="block text-sm font-medium">Visibility</label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="visibility">Visibility</Label>
             <select
+              id="visibility"
               name="visibility"
               defaultValue={initial?.visibility ?? "PRIVATE"}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <option value="PRIVATE">Private (class only)</option>
               <option value="PUBLIC">Public (gallery)</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium">Comments when public</label>
+          <div className="space-y-2">
+            <Label htmlFor="commentsEnabled">Comments when public</Label>
             <select
+              id="commentsEnabled"
               name="commentsEnabled"
               defaultValue={initial?.commentsEnabled === false ? "false" : "true"}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <option value="true">Enabled</option>
               <option value="false">Disabled</option>
             </select>
           </div>
-        </>
+        </div>
       )}
+
       {err && (
-        <p className="text-sm text-red-600" role="alert">
-          {err}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{err}</AlertDescription>
+        </Alert>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
-      >
+
+      <Button type="submit" disabled={pending} size="lg">
         {pending ? "Saving…" : mode === "create" ? "Create submission" : "Save changes"}
-      </button>
+      </Button>
     </form>
   );
 }
