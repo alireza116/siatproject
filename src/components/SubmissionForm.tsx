@@ -24,6 +24,7 @@ type Props = {
     description?: string;
     projectUrls: string;
     youtubeUrls: string;
+    coauthorSfuIds?: string;
     visibility?: string;
     commentsEnabled?: boolean;
   };
@@ -78,6 +79,23 @@ export function SubmissionForm({
       <div className="space-y-2">
         <Label>Group name</Label>
         <Input name="groupName" required defaultValue={initial?.groupName} placeholder="Team Alpha" />
+      </div>
+
+      <div className="space-y-2">
+        <Label>
+          Group members{" "}
+          <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Textarea
+          name="coauthorSfuIds"
+          rows={2}
+          defaultValue={initial?.coauthorSfuIds}
+          className="font-mono text-xs"
+          placeholder={"jsmith\nalee"}
+        />
+        <p className="text-xs text-muted-foreground">
+          SFU computing IDs of other group members, one per line. Do not include yourself.
+        </p>
       </div>
 
       <div className="space-y-2">

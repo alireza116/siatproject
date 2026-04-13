@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateStudentEnrollmentPrivilegesAction } from "@/app/actions/enrollment-privileges";
+import { removeStudentAction } from "@/app/actions/class";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -24,6 +25,7 @@ export function StudentPrivilegeRow({
 }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [removePending, setRemovePending] = useState(false);
 
   return (
     <li className="px-4 py-4">
@@ -92,13 +94,33 @@ export function StudentPrivilegeRow({
             </span>
           </label>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" size="sm" variant="secondary" disabled={pending}>
             {pending ? "Saving…" : "Save for this student"}
           </Button>
           <span className="text-xs text-muted-foreground">
             Applies only to submissions they author in this class.
           </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-xs text-muted-foreground hover:text-destructive"
+            disabled={removePending}
+            onClick={async () => {
+              if (!confirm(`Remove ${label} from this class?`)) return;
+              setRemovePending(true);
+              const r = await removeStudentAction(classId, userId);
+              setRemovePending(false);
+              if (!r.ok) {
+                alert(r.error);
+                return;
+              }
+              router.refresh();
+            }}
+          >
+            {removePending ? "Removing…" : "Remove from class"}
+          </Button>
         </div>
       </form>
     </li>

@@ -5,6 +5,7 @@ import { dbConnect } from "@/lib/db/connect";
 import { Enrollment } from "@/lib/models/Enrollment";
 import { ClassModel } from "@/lib/models/Class";
 import { JoinForm } from "@/app/dashboard/join-form";
+import { LeaveClassButton } from "@/app/dashboard/leave-class-button";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -152,12 +153,15 @@ export default async function DashboardPage() {
                       <p className="font-medium text-foreground">{c.title}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground font-mono">{c.joinCode}</p>
                     </Link>
-                    <Link
-                      href={`/classes/${c._id}/projects`}
-                      className="shrink-0 text-sm font-medium text-foreground underline underline-offset-4"
-                    >
-                      View projects
-                    </Link>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Link
+                        href={`/classes/${c._id}/projects`}
+                        className="text-sm font-medium text-foreground underline underline-offset-4"
+                      >
+                        View projects
+                      </Link>
+                      <LeaveClassButton classId={c._id.toString()} />
+                    </div>
                   </li>
                 ))}
               </ul>

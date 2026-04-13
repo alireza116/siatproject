@@ -36,6 +36,7 @@ type Props = {
   ratingAverage: number;
   ratingCount: number;
   userRating: number | null;
+  className?: string;
 };
 
 export function CommentsBlock({
@@ -49,6 +50,7 @@ export function CommentsBlock({
   ratingAverage,
   ratingCount,
   userRating,
+  className,
 }: Props) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export function CommentsBlock({
   const [editPending, setEditPending] = useState(false);
 
   return (
-    <section className="mt-10">
+    <section className={className}>
       <h2 className="text-base font-semibold">Feedback</h2>
       <div className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

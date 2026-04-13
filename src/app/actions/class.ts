@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/db/connect";
+import { isClassAppManager } from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
 import { Enrollment } from "@/lib/models/Enrollment";
 import { customAlphabet } from "nanoid";
@@ -70,4 +71,49 @@ export async function joinClassAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath(`/classes/${cls._id}`);
   return { ok: true as const, classId: cls._id.toString() };
+}
+
+export async function leaveClassAction(classId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { ok: false as const, error: "Not allowed" };
+  }
+  await dbConnect();
+  const enrollment = await Enrollment.findOne({ classId, userId: session.user.id });
+  if (!enrollment) {
+    return { ok: false as const, error: "Not enrolled in this class" };
+  }
+  if (enrollment.role === "INSTRUCTOR") {
+    return { ok: false as const, error: "Instructors cannot leave a class this way. Contact the class owner." };
+  }
+  await Enrollment.deleteOne({ classId, userId: session.user.id });
+  revalidatePath("/dashboard");
+  revalidatePath(`/classes/${classId}`);
+  return { ok: true as const };
+}
+
+export async function removeStudentAction(classId: string, userId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { ok: false as const, error: "Not allowed" };
+  }
+  const canManage = await isClassAppManager(session.user.id, classId, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
+  if (!canManage) {
+    return { ok: false as const, error: "Not allowed" };
+  }
+  await dbConnect();
+  const enrollment = await Enrollment.findOne({ classId, userId });
+  if (!enrollment) {
+    return { ok: false as const, error: "Enrollment not found" };
+  }
+  if (enrollment.role === "INSTRUCTOR") {
+    return { ok: false as const, error: "Cannot remove an instructor enrollment." };
+  }
+  await Enrollment.deleteOne({ classId, userId });
+  revalidatePath(`/classes/${classId}`);
+  revalidatePath("/dashboard");
+  return { ok: true as const };
 }

@@ -9,6 +9,7 @@ import type { LeanClassFull } from "@/lib/types/lean";
 import { SubmissionForm } from "@/components/SubmissionForm";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getViewAsUserId } from "@/lib/view-as";
 
 export default async function NewSubmissionPage({
   params,
@@ -20,12 +21,15 @@ export default async function NewSubmissionPage({
   if (!session?.user?.id) redirect("/");
   if (!session.user.sfuId) redirect("/onboarding/sfu-id");
 
+  const viewAsUserId = await getViewAsUserId(session.user.role);
+  const effectiveUserId = viewAsUserId ?? session.user.id;
+
   await dbConnect();
   const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
   if (!cls) notFound();
 
-  const allowed = await canAccessClassOrGlobalAdmin(session.user.id, classId, {
-    isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
+  const allowed = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
+    isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
   });
   if (!allowed) {
     return (
@@ -41,11 +45,13 @@ export default async function NewSubmissionPage({
     );
   }
 
-  const classManager = await isClassAppManager(session.user.id, classId, {
-    globalRole: session.user.role,
-    viewAsActive: false,
-  });
-  const priv = await getStudentSubmissionPrivileges(session.user.id, classId);
+  const classManager =
+    !viewAsUserId &&
+    (await isClassAppManager(session.user.id, classId, {
+      globalRole: session.user.role,
+      viewAsActive: false,
+    }));
+  const priv = await getStudentSubmissionPrivileges(effectiveUserId, classId);
   const showVisibility = classManager || priv.canChangeVisibility;
 
   return (

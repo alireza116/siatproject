@@ -4,6 +4,7 @@ import { Submission } from "@/lib/models/Submission";
 import { effectiveVisibility } from "@/lib/visibility";
 import { leanOne } from "@/lib/mongoose-lean";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
+import type { Types } from "mongoose";
 
 export type PublicSubmissionListItem = {
   _id: string;
@@ -24,26 +25,50 @@ export type PublicClassListItem = {
 /** List all classes that have at least one publicly visible submission. */
 export async function listClassesWithPublicSubmissions(): Promise<PublicClassListItem[]> {
   await dbConnect();
-  const subs = (await Submission.find().lean()) as unknown as LeanSubmissionFull[];
 
-  const classIds = [...new Set(subs.map((s) => s.classId.toString()))];
-  const classes = (await ClassModel.find({ _id: { $in: classIds } }).lean()) as unknown as LeanClassFull[];
-  const classMap = new Map(classes.map((c) => [c._id.toString(), c]));
+  // Use aggregation to avoid loading all submissions into memory.
+  // A submission is public if its own visibility is PUBLIC, or if it has no
+  // visibility override and the class default is PUBLIC.
+  const results = (await Submission.aggregate([
+    {
+      $lookup: {
+        from: "classes",
+        localField: "classId",
+        foreignField: "_id",
+        as: "cls",
+      },
+    },
+    { $unwind: "$cls" },
+    {
+      $match: {
+        $or: [
+          { visibility: "PUBLIC" },
+          {
+            $and: [
+              { $or: [{ visibility: { $exists: false } }, { visibility: null }] },
+              { "cls.defaultVisibility": "PUBLIC" },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: "$classId",
+        publicCount: { $sum: 1 },
+        classTitle: { $first: "$cls.title" },
+        classDescription: { $first: "$cls.description" },
+      },
+    },
+    { $sort: { classTitle: 1 } },
+  ])) as { _id: Types.ObjectId; publicCount: number; classTitle: string; classDescription?: string }[];
 
-  const counts = new Map<string, number>();
-  for (const s of subs) {
-    const cls = classMap.get(s.classId.toString());
-    if (!cls) continue;
-    if (effectiveVisibility(s, cls) !== "PUBLIC") continue;
-    counts.set(s.classId.toString(), (counts.get(s.classId.toString()) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .map(([id, publicCount]) => {
-      const cls = classMap.get(id)!;
-      return { _id: id, title: cls.title, description: cls.description, publicCount };
-    })
-    .sort((a, b) => a.title.localeCompare(b.title));
+  return results.map((r) => ({
+    _id: r._id.toString(),
+    title: r.classTitle,
+    description: r.classDescription,
+    publicCount: r.publicCount,
+  }));
 }
 
 /** List all publicly visible submissions for a single class. */

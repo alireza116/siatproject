@@ -7,6 +7,8 @@ import { ClassModel } from "@/lib/models/Class";
 import { Enrollment } from "@/lib/models/Enrollment";
 import { Submission } from "@/lib/models/Submission";
 import { Comment } from "@/lib/models/Comment";
+import { CommentVote } from "@/lib/models/CommentVote";
+import { SubmissionRating } from "@/lib/models/SubmissionRating";
 import { revalidatePath } from "next/cache";
 
 const DEMO_CLASS_JOIN_CODE = "DEMOCLASS";
@@ -263,6 +265,13 @@ export async function clearDemoDataAction(): Promise<
   const submissions = await Submission.find({ classId: demoClass._id });
   const submissionIds = submissions.map((s) => s._id);
 
+  const commentDocs = (await Comment.find(
+    { submissionId: { $in: submissionIds } },
+    "_id"
+  ).lean()) as { _id: unknown }[];
+  const commentIds = commentDocs.map((c) => c._id);
+  await CommentVote.deleteMany({ commentId: { $in: commentIds } });
+  await SubmissionRating.deleteMany({ submissionId: { $in: submissionIds } });
   await Comment.deleteMany({ submissionId: { $in: submissionIds } });
   await Submission.deleteMany({ classId: demoClass._id });
   await Enrollment.deleteMany({ classId: demoClass._id });

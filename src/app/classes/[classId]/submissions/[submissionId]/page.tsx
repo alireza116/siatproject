@@ -24,6 +24,7 @@ import { effectiveCommentsOnPublic, effectiveVisibility } from "@/lib/visibility
 import { SubmissionForm } from "@/components/SubmissionForm";
 import { CommentsBlock } from "@/components/CommentsBlock";
 import { DeleteSubmissionButton } from "@/components/DeleteSubmissionButton";
+import { ProjectNav } from "@/components/ProjectNav";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/components/ui/button";
@@ -101,20 +102,56 @@ export default async function SubmissionDetailPage({
   const commentsOk = effectiveCommentsOnPublic(sub, cls);
   const rating = await getRatingStatsForSubmission(submissionId, session.user.id);
 
+  // Navigation: ordered list of submissions visible to this user
+  const allSubsForNav = (await Submission.find({ classId: cls._id })
+    .sort({ createdAt: -1 })
+    .select("_id title authorUserIds createdById")
+    .lean()) as unknown as LeanSubmissionFull[];
+  const visibleSubsForNav = classManager
+    ? allSubsForNav
+    : allSubsForNav.filter((s) => isSubmissionAuthor(s, effectiveUserId));
+  const navIndex = visibleSubsForNav.findIndex((s) => s._id.toString() === submissionId);
+  const prevNavSub = navIndex > 0 ? visibleSubsForNav[navIndex - 1] : null;
+  const nextNavSub = navIndex < visibleSubsForNav.length - 1 ? visibleSubsForNav[navIndex + 1] : null;
+
   const ytLines = (sub.youtubeVideoIds ?? []).map(
     (id) => `https://www.youtube.com/watch?v=${id}`
   );
   const projectText = (sub.projectUrls ?? []).join("\n");
 
+  const commentRows = comments.map((c) => ({
+    id: c._id.toString(),
+    body: c.body,
+    createdAt: c.createdAt?.toISOString() ?? "",
+    userId: c.userId.toString(),
+    upvotes: voteSummary.get(c._id.toString())?.upvotes ?? 0,
+    downvotes: voteSummary.get(c._id.toString())?.downvotes ?? 0,
+    userVote: voteSummary.get(c._id.toString())?.userVote ?? 0,
+    userLabel:
+      userMap.get(c.userId.toString())?.sfuId ??
+      userMap.get(c.userId.toString())?.name ??
+      "User",
+  }));
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
+    <div className="mx-auto max-w-7xl px-4 py-10">
       <Link
         href={`/classes/${classId}`}
-        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2 text-muted-foreground")}
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 text-muted-foreground")}
       >
         ← {cls.title}
       </Link>
 
+      {visibleSubsForNav.length > 1 && (
+        <ProjectNav
+          prev={prevNavSub ? { href: `/classes/${classId}/submissions/${prevNavSub._id}`, title: prevNavSub.title } : null}
+          next={nextNavSub ? { href: `/classes/${classId}/submissions/${nextNavSub._id}`, title: nextNavSub.title } : null}
+          current={navIndex + 1}
+          total={visibleSubsForNav.length}
+        />
+      )}
+
+      {/* Title row */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sub.title}</h1>
@@ -142,119 +179,122 @@ export default async function SubmissionDetailPage({
         )}
       </div>
 
-      {/* Abstract */}
-      {sub.description && (
-        <section className="mt-6">
-          <h2 className="text-sm font-semibold text-foreground">Abstract</h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-            {sub.description}
-          </p>
-        </section>
-      )}
+      {/* Two-column layout: project content left, feedback right */}
+      <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
 
-      {/* Videos */}
-      {(sub.youtubeVideoIds ?? []).length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-sm font-semibold text-foreground">Videos</h2>
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            {(sub.youtubeVideoIds ?? []).map((id) => (
-              <div key={id} className="aspect-video overflow-hidden rounded-xl bg-muted">
-                <iframe
-                  title={`YouTube ${id}`}
-                  className="h-full w-full"
-                  src={`https://www.youtube.com/embed/${id}`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Project links */}
-      {(sub.projectUrls ?? []).length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-sm font-semibold text-foreground">Project links</h2>
-          <ul className="mt-2 space-y-1">
-            {(sub.projectUrls ?? []).map((u) => (
-              <li key={u}>
-                <a
-                  href={u}
-                  className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {u}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {isAuthor && !classManager && !canEditContent && (
-        <p className="mt-10 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Editing is turned off for your account in this class. Contact your instructor if you need
-          changes.
-        </p>
-      )}
-
-      {canEditContent && (
-        <>
-          <Separator className="mt-10" />
-          <section className="mt-8">
-            <h2 className="text-base font-semibold">Edit submission</h2>
-            {!canChangeVisUI && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Public/private and comment settings are locked for your account; other fields can be
-                updated below.
+        {/* ── Left column: project content ── */}
+        <div className="min-w-0">
+          {/* Abstract */}
+          {sub.description && (
+            <section>
+              <h2 className="text-sm font-semibold text-foreground">Abstract</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {sub.description}
               </p>
-            )}
-            <SubmissionForm
-              mode="edit"
-              classId={classId}
-              submissionId={submissionId}
-              showVisibility={canChangeVisUI}
-              initial={{
-                title: sub.title,
-                groupName: sub.groupName,
-                description: sub.description,
-                projectUrls: projectText,
-                youtubeUrls: ytLines.join("\n"),
-                visibility: sub.visibility ?? cls.defaultVisibility,
-                commentsEnabled: sub.commentsEnabled ?? cls.commentsOnPublic,
-              }}
-            />
-          </section>
-        </>
-      )}
+            </section>
+          )}
 
-      <Separator className="mt-10" />
-      <CommentsBlock
-        submissionId={submissionId}
-        comments={comments.map((c) => ({
-          id: c._id.toString(),
-          body: c.body,
-          createdAt: c.createdAt?.toISOString() ?? "",
-          userId: c.userId.toString(),
-          upvotes: voteSummary.get(c._id.toString())?.upvotes ?? 0,
-          downvotes: voteSummary.get(c._id.toString())?.downvotes ?? 0,
-          userVote: voteSummary.get(c._id.toString())?.userVote ?? 0,
-          userLabel:
-            userMap.get(c.userId.toString())?.sfuId ??
-            userMap.get(c.userId.toString())?.name ??
-            "User",
-        }))}
-        canComment={vis === "PRIVATE" || commentsOk}
-        canRate={canView}
-        hasOwnComment={hasOwnComment}
-        signedInUserId={effectiveUserId}
-        isInstructor={classManager}
-        ratingAverage={rating.average}
-        ratingCount={rating.count}
-        userRating={rating.userRating}
-      />
+          {/* Videos */}
+          {(sub.youtubeVideoIds ?? []).length > 0 && (
+            <section className={sub.description ? "mt-8" : ""}>
+              <h2 className="text-sm font-semibold text-foreground">Videos</h2>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                {(sub.youtubeVideoIds ?? []).map((id) => (
+                  <div key={id} className="aspect-video overflow-hidden rounded-xl bg-muted">
+                    <iframe
+                      title={`YouTube ${id}`}
+                      className="h-full w-full"
+                      src={`https://www.youtube.com/embed/${id}`}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Project links */}
+          {(sub.projectUrls ?? []).length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold text-foreground">Project links</h2>
+              <ul className="mt-2 space-y-1">
+                {(sub.projectUrls ?? []).map((u) => (
+                  <li key={u}>
+                    <a
+                      href={u}
+                      className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {u}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {isAuthor && !classManager && !canEditContent && (
+            <p className="mt-10 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              Editing is turned off for your account in this class. Contact your instructor if you
+              need changes.
+            </p>
+          )}
+
+          {canEditContent && (
+            <>
+              <Separator className="mt-10" />
+              <section className="mt-8">
+                <h2 className="text-base font-semibold">Edit submission</h2>
+                {!canChangeVisUI && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Public/private and comment settings are locked for your account; other fields
+                    can be updated below.
+                  </p>
+                )}
+                <SubmissionForm
+                  mode="edit"
+                  classId={classId}
+                  submissionId={submissionId}
+                  showVisibility={canChangeVisUI}
+                  initial={{
+                    title: sub.title,
+                    groupName: sub.groupName,
+                    description: sub.description,
+                    projectUrls: projectText,
+                    youtubeUrls: ytLines.join("\n"),
+                    coauthorSfuIds: (sub.authorSfuIds ?? [])
+                      .filter((id) => id !== session.user.sfuId)
+                      .join("\n"),
+                    visibility: sub.visibility ?? cls.defaultVisibility,
+                    commentsEnabled: sub.commentsEnabled ?? cls.commentsOnPublic,
+                  }}
+                />
+              </section>
+            </>
+          )}
+        </div>
+
+        {/* ── Right column: feedback (sticky + scrollable) ── */}
+        <aside className="lg:sticky lg:top-[4.5rem] lg:self-start">
+          <div className="lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:rounded-xl lg:border lg:border-border lg:bg-card lg:px-5 lg:py-5">
+            <CommentsBlock
+              submissionId={submissionId}
+              comments={commentRows}
+              canComment={vis === "PRIVATE" || commentsOk}
+              canRate={canView}
+              hasOwnComment={hasOwnComment}
+              signedInUserId={effectiveUserId}
+              isInstructor={classManager}
+              ratingAverage={rating.average}
+              ratingCount={rating.count}
+              userRating={rating.userRating}
+            />
+          </div>
+        </aside>
+
+      </div>
     </div>
   );
 }

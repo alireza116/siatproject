@@ -11,7 +11,9 @@ import {
 } from "@/lib/class-access";
 import { ClassModel } from "@/lib/models/Class";
 import { Comment } from "@/lib/models/Comment";
+import { CommentVote } from "@/lib/models/CommentVote";
 import { Submission } from "@/lib/models/Submission";
+import { SubmissionRating } from "@/lib/models/SubmissionRating";
 import { User } from "@/lib/models/User";
 import { extractYoutubeVideoIds, isAllowedProjectUrl } from "@/lib/youtube";
 import { leanOne } from "@/lib/mongoose-lean";
@@ -86,6 +88,26 @@ export async function createSubmissionAction(formData: FormData) {
     }
   }
 
+  const coauthorRaw = parseLines(String(formData.get("coauthorSfuIds") ?? ""));
+  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== me.sfuId))];
+  const coauthorUsers =
+    coauthorSfuIds.length > 0
+      ? ((await User.find({ sfuId: { $in: coauthorSfuIds } })
+          .select("_id sfuId name")
+          .lean()) as unknown as LeanUser[])
+      : [];
+  const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
+
+  const authorUserIds: string[] = [session.user.id];
+  const authorNames: string[] = [me.name ?? me.sfuId ?? "Student"];
+  const authorSfuIds: string[] = [me.sfuId];
+  for (const sfuId of coauthorSfuIds) {
+    const u = coauthorUserMap.get(sfuId);
+    if (u?._id) authorUserIds.push(u._id.toString());
+    authorNames.push(u?.name ?? sfuId);
+    authorSfuIds.push(sfuId);
+  }
+
   let sub;
   try {
     sub = await Submission.create({
@@ -95,9 +117,9 @@ export async function createSubmissionAction(formData: FormData) {
       description,
       projectUrls,
       youtubeVideoIds,
-      authorUserIds: [session.user.id],
-      authorNames: [me.name ?? "Student"],
-      authorSfuIds: [me.sfuId],
+      authorUserIds,
+      authorNames,
+      authorSfuIds,
       createdById: session.user.id,
       ...(visibility ? { visibility } : {}),
       ...(typeof commentsEnabled === "boolean" ? { commentsEnabled } : {}),
@@ -168,11 +190,38 @@ export async function updateSubmissionAction(formData: FormData) {
     return { ok: false as const, error: "Add at least one valid YouTube URL or video ID" };
   }
 
+  // Rebuild author arrays: creator stays first, co-authors are replaced
+  const creatorDoc = (await User.findById(sub.createdById)
+    .select("_id sfuId name")
+    .lean()) as unknown as LeanUser | null;
+  const coauthorRaw = parseLines(String(formData.get("coauthorSfuIds") ?? ""));
+  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== creatorDoc?.sfuId))];
+  const coauthorUsers =
+    coauthorSfuIds.length > 0
+      ? ((await User.find({ sfuId: { $in: coauthorSfuIds } })
+          .select("_id sfuId name")
+          .lean()) as unknown as LeanUser[])
+      : [];
+  const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
+
+  const newAuthorUserIds: string[] = [sub.createdById.toString()];
+  const newAuthorNames: string[] = [creatorDoc?.name ?? creatorDoc?.sfuId ?? "Student"];
+  const newAuthorSfuIds: string[] = [creatorDoc?.sfuId ?? ""];
+  for (const sfuId of coauthorSfuIds) {
+    const u = coauthorUserMap.get(sfuId);
+    if (u?._id) newAuthorUserIds.push(u._id.toString());
+    newAuthorNames.push(u?.name ?? sfuId);
+    newAuthorSfuIds.push(sfuId);
+  }
+
   sub.title = title;
   sub.groupName = groupName;
   sub.description = description ?? null;
   sub.projectUrls = projectUrls;
   sub.youtubeVideoIds = youtubeVideoIds;
+  sub.authorUserIds = newAuthorUserIds;
+  sub.authorNames = newAuthorNames;
+  sub.authorSfuIds = newAuthorSfuIds;
 
   if (canChangeVisibility) {
     if (vis === "PUBLIC" || vis === "PRIVATE") {
@@ -218,6 +267,10 @@ export async function deleteSubmissionAction(submissionId: string) {
       return { ok: false as const, error: "Deleting your submissions is disabled for this class." };
     }
   }
+  const commentDocs = (await Comment.find({ submissionId }, "_id").lean()) as { _id: Types.ObjectId }[];
+  const commentIds = commentDocs.map((c) => c._id);
+  await CommentVote.deleteMany({ commentId: { $in: commentIds } });
+  await SubmissionRating.deleteMany({ submissionId });
   await Comment.deleteMany({ submissionId });
   await Submission.deleteOne({ _id: submissionId });
   revalidatePath(`/classes/${sub.classId}`);
