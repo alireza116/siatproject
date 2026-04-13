@@ -9,6 +9,7 @@ import { effectiveVisibility } from "@/lib/visibility";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 export default async function MySubmissionsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/");
@@ -35,6 +36,7 @@ export default async function MySubmissionsPage() {
       return { s, cls };
     })
     .filter((r): r is { s: LeanSubmissionFull; cls: LeanClassFull } => r !== null);
+  const ratings = await getRatingStatsBySubmissionIds(rows.map((r) => r.s._id.toString()));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -73,6 +75,13 @@ export default async function MySubmissionsPage() {
                         {" · "}
                         {s.groupName}
                         {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(() => {
+                          const r = ratings.get(s._id.toString());
+                          if (!r || r.count === 0) return "Rating: not rated yet";
+                          return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
+                        })()}
                       </p>
                     </div>
                     <Badge variant={vis === "PUBLIC" ? "secondary" : "outline"} className="shrink-0 text-[10px]">

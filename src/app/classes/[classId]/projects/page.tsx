@@ -14,6 +14,7 @@ import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 
 export default async function ClassProjectsPage({
   params,
@@ -68,6 +69,9 @@ export default async function ClassProjectsPage({
   const submissions = classManager
     ? allSubmissions
     : allSubmissions.filter((s) => canStudentViewSubmissionInClass(s, cls, effectiveUserId));
+  const ratings = await getRatingStatsBySubmissionIds(
+    submissions.map((s) => s._id.toString())
+  );
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -131,6 +135,13 @@ export default async function ClassProjectsPage({
                         {s.description}
                       </p>
                     )}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {(() => {
+                        const r = ratings.get(s._id.toString());
+                        if (!r || r.count === 0) return "Rating: not rated yet";
+                        return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
+                      })()}
+                    </p>
                     <div className="mt-3 flex items-center justify-between">
                       <Badge variant={vis === "PUBLIC" ? "secondary" : "outline"} className="text-[10px]">
                         {vis === "PUBLIC" ? "Public" : "Class only"}

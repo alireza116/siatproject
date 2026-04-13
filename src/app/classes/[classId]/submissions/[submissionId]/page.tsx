@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
+import { getCommentVoteSummary, getRatingStatsForSubmission } from "@/lib/feedback";
 
 export default async function SubmissionDetailPage({
   params,
@@ -87,6 +88,9 @@ export default async function SubmissionDetailPage({
   const comments = (await Comment.find({ submissionId: sub._id })
     .sort({ createdAt: 1 })
     .lean()) as unknown as LeanComment[];
+  const hasOwnComment = comments.some((c) => c.userId.toString() === effectiveUserId);
+  const commentIds = comments.map((c) => c._id.toString());
+  const voteSummary = await getCommentVoteSummary(commentIds, session.user.id);
   const userIds = [...new Set(comments.map((c) => c.userId.toString()))];
   const users = (await User.find({ _id: { $in: userIds } })
     .select("name sfuId")
@@ -95,6 +99,7 @@ export default async function SubmissionDetailPage({
 
   const vis = effectiveVisibility(sub, cls);
   const commentsOk = effectiveCommentsOnPublic(sub, cls);
+  const rating = await getRatingStatsForSubmission(submissionId, session.user.id);
 
   const ytLines = (sub.youtubeVideoIds ?? []).map(
     (id) => `https://www.youtube.com/watch?v=${id}`
@@ -233,14 +238,22 @@ export default async function SubmissionDetailPage({
           body: c.body,
           createdAt: c.createdAt?.toISOString() ?? "",
           userId: c.userId.toString(),
+          upvotes: voteSummary.get(c._id.toString())?.upvotes ?? 0,
+          downvotes: voteSummary.get(c._id.toString())?.downvotes ?? 0,
+          userVote: voteSummary.get(c._id.toString())?.userVote ?? 0,
           userLabel:
             userMap.get(c.userId.toString())?.sfuId ??
             userMap.get(c.userId.toString())?.name ??
             "User",
         }))}
         canComment={vis === "PRIVATE" || commentsOk}
+        canRate={canView}
+        hasOwnComment={hasOwnComment}
         signedInUserId={effectiveUserId}
         isInstructor={classManager}
+        ratingAverage={rating.average}
+        ratingCount={rating.count}
+        userRating={rating.userRating}
       />
     </div>
   );

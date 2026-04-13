@@ -9,6 +9,7 @@ import type { LeanClassFull } from "@/lib/types/lean";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 
 export default async function ClassGalleryPage({
   params,
@@ -22,6 +23,7 @@ export default async function ClassGalleryPage({
   if (!cls) notFound();
 
   const items = await listPublicSubmissionsForClass(classId);
+  const ratings = await getRatingStatsBySubmissionIds(items.map((s) => s._id));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -68,6 +70,13 @@ export default async function ClassGalleryPage({
                   <div className="flex flex-1 flex-col p-4">
                     <p className="font-medium text-foreground">{s.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{s.groupName}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {(() => {
+                        const r = ratings.get(s._id);
+                        if (!r || r.count === 0) return "Rating: not rated yet";
+                        return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
+                      })()}
+                    </p>
                     <div className="mt-auto pt-3 flex items-center justify-between">
                       <Badge variant="secondary" className="text-[10px]">Public</Badge>
                       <span className="text-xs text-muted-foreground">

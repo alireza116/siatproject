@@ -19,6 +19,7 @@ const CommentSchema = new mongoose.Schema(
 );
 
 CommentSchema.index({ submissionId: 1, createdAt: 1 });
+CommentSchema.index({ submissionId: 1, userId: 1 }, { unique: true });
 
 export type CommentDoc = InferSchemaType<typeof CommentSchema> & {
   _id: Types.ObjectId;

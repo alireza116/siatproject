@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import { isSubmissionAuthor } from "@/lib/submission-access";
+import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 
 export default async function ClassPage({
   params,
@@ -69,6 +70,9 @@ export default async function ClassPage({
   const submissions = classManager
     ? allSubmissions
     : allSubmissions.filter((s) => isSubmissionAuthor(s, effectiveUserId));
+  const ratings = await getRatingStatsBySubmissionIds(
+    submissions.map((s) => s._id.toString())
+  );
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -160,6 +164,13 @@ export default async function ClassPage({
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {s.groupName}
                         {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(() => {
+                          const r = ratings.get(s._id.toString());
+                          if (!r || r.count === 0) return "Rating: not rated yet";
+                          return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
+                        })()}
                       </p>
                     </div>
                     <Badge variant="outline" className="shrink-0 text-xs">
