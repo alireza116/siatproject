@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { listClassesWithPublicSubmissions } from "@/lib/gallery";
+
+export const dynamic = "force-dynamic";
 import { Badge } from "@/components/ui/badge";
 
 export default async function GalleryPage() {
