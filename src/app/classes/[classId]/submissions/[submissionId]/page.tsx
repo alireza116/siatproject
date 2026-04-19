@@ -8,18 +8,15 @@ import {
   getStudentSubmissionPrivileges,
   isClassAppManager,
 } from "@/lib/class-access";
-import { dbConnect } from "@/lib/db/connect";
-import { leanOne } from "@/lib/mongoose-lean";
-import type {
-  LeanClassFull,
-  LeanComment,
-  LeanSubmissionFull,
-  LeanUserPublic,
-} from "@/lib/types/lean";
-import { ClassModel } from "@/lib/models/Class";
-import { Comment } from "@/lib/models/Comment";
-import { Submission } from "@/lib/models/Submission";
-import { User } from "@/lib/models/User";
+import type { LeanComment, LeanUserPublic } from "@/lib/types/lean";
+import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
+import { listCommentsForSubmission } from "@/lib/firestore/comments";
+import {
+  getSubmissionById,
+  listSubmissionsByClass,
+  toLeanSubmissionFull,
+} from "@/lib/firestore/submissions";
+import { listUsersByIds } from "@/lib/firestore/users";
 import { effectiveCommentsOnPublic, effectiveVisibility } from "@/lib/visibility";
 import { SubmissionForm } from "@/components/SubmissionForm";
 import { CommentsBlock } from "@/components/CommentsBlock";
@@ -45,12 +42,13 @@ export default async function SubmissionDetailPage({
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
 
-  await dbConnect();
-  const sub = leanOne<LeanSubmissionFull>(await Submission.findById(submissionId).lean());
-  if (!sub || sub.classId.toString() !== classId) notFound();
+  const subRaw = await getSubmissionById(submissionId);
+  if (!subRaw || subRaw.classId !== classId) notFound();
+  const sub = toLeanSubmissionFull(subRaw);
 
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) notFound();
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) notFound();
+  const cls = toLeanClassFull(clsRaw);
 
   const enrolled = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
     isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
@@ -86,52 +84,54 @@ export default async function SubmissionDetailPage({
   const canDeleteSubmission =
     classManager || (isAuthor && studentPriv.canDeleteSubmissions);
 
-  const comments = (await Comment.find({ submissionId: sub._id })
-    .sort({ createdAt: 1 })
-    .lean()) as unknown as LeanComment[];
-  const hasOwnComment = comments.some((c) => c.userId.toString() === effectiveUserId);
-  const commentIds = comments.map((c) => c._id.toString());
+  const commentsRaw = await listCommentsForSubmission(submissionId);
+  const comments: LeanComment[] = commentsRaw.map((c) => ({
+    _id: c.id,
+    userId: c.userId,
+    body: c.body,
+    createdAt: c.createdAt,
+  }));
+  const hasOwnComment = comments.some((c) => c.userId === effectiveUserId);
+  const commentIds = comments.map((c) => c._id);
   const voteSummary = await getCommentVoteSummary(commentIds, session.user.id);
-  const userIds = [...new Set(comments.map((c) => c.userId.toString()))];
-  const users = (await User.find({ _id: { $in: userIds } })
-    .select("name sfuId")
-    .lean()) as unknown as LeanUserPublic[];
-  const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+  const userIds = [...new Set(comments.map((c) => c.userId))];
+  const users = await listUsersByIds(userIds);
+  const userMap = new Map(users.map((u) => [u.id, u]));
 
   const vis = effectiveVisibility(sub, cls);
   const commentsOk = effectiveCommentsOnPublic(sub, cls);
   const rating = await getRatingStatsForSubmission(submissionId, session.user.id);
 
-  // Navigation: ordered list of submissions visible to this user
-  const allSubsForNav = (await Submission.find({ classId: cls._id })
-    .sort({ createdAt: -1 })
-    .select("_id title authorUserIds createdById")
-    .lean()) as unknown as LeanSubmissionFull[];
+  const allSubsRaw = await listSubmissionsByClass(classId);
+  const allSubsForNav = allSubsRaw.map(toLeanSubmissionFull);
   const visibleSubsForNav = classManager
     ? allSubsForNav
     : allSubsForNav.filter((s) => isSubmissionAuthor(s, effectiveUserId));
-  const navIndex = visibleSubsForNav.findIndex((s) => s._id.toString() === submissionId);
-  const prevNavSub = navIndex > 0 ? visibleSubsForNav[navIndex - 1] : null;
-  const nextNavSub = navIndex < visibleSubsForNav.length - 1 ? visibleSubsForNav[navIndex + 1] : null;
+  const navIndex = visibleSubsForNav.findIndex((s) => s._id === submissionId);
+  const prevNavSub = navIndex > 0 ? visibleSubsForNav[navIndex - 1]! : null;
+  const nextNavSub = navIndex < visibleSubsForNav.length - 1 ? visibleSubsForNav[navIndex + 1]! : null;
 
   const ytLines = (sub.youtubeVideoIds ?? []).map(
     (id) => `https://www.youtube.com/watch?v=${id}`
   );
   const projectText = (sub.projectUrls ?? []).join("\n");
 
-  const commentRows = comments.map((c) => ({
-    id: c._id.toString(),
-    body: c.body,
-    createdAt: c.createdAt?.toISOString() ?? "",
-    userId: c.userId.toString(),
-    upvotes: voteSummary.get(c._id.toString())?.upvotes ?? 0,
-    downvotes: voteSummary.get(c._id.toString())?.downvotes ?? 0,
-    userVote: voteSummary.get(c._id.toString())?.userVote ?? 0,
-    userLabel:
-      userMap.get(c.userId.toString())?.sfuId ??
-      userMap.get(c.userId.toString())?.name ??
-      "User",
-  }));
+  const commentRows = comments.map((c) => {
+    const u = userMap.get(c.userId);
+    const pub: LeanUserPublic | undefined = u
+      ? { _id: u.id, name: u.name, sfuId: u.sfuId }
+      : undefined;
+    return {
+      id: c._id,
+      body: c.body,
+      createdAt: c.createdAt?.toISOString() ?? "",
+      userId: c.userId,
+      upvotes: voteSummary.get(c._id)?.upvotes ?? 0,
+      downvotes: voteSummary.get(c._id)?.downvotes ?? 0,
+      userVote: voteSummary.get(c._id)?.userVote ?? 0,
+      userLabel: pub?.sfuId ?? pub?.name ?? "User",
+    };
+  });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
@@ -151,7 +151,6 @@ export default async function SubmissionDetailPage({
         />
       )}
 
-      {/* Title row */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sub.title}</h1>
@@ -179,12 +178,9 @@ export default async function SubmissionDetailPage({
         )}
       </div>
 
-      {/* Two-column layout: project content left, feedback right */}
       <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
 
-        {/* ── Left column: project content ── */}
         <div className="min-w-0">
-          {/* Abstract */}
           {sub.description && (
             <section>
               <h2 className="text-sm font-semibold text-foreground">Abstract</h2>
@@ -194,7 +190,6 @@ export default async function SubmissionDetailPage({
             </section>
           )}
 
-          {/* Videos */}
           {(sub.youtubeVideoIds ?? []).length > 0 && (
             <section className={sub.description ? "mt-8" : ""}>
               <h2 className="text-sm font-semibold text-foreground">Videos</h2>
@@ -214,7 +209,6 @@ export default async function SubmissionDetailPage({
             </section>
           )}
 
-          {/* Project links */}
           {(sub.projectUrls ?? []).length > 0 && (
             <section className="mt-8">
               <h2 className="text-sm font-semibold text-foreground">Project links</h2>
@@ -276,7 +270,6 @@ export default async function SubmissionDetailPage({
           )}
         </div>
 
-        {/* ── Right column: feedback (sticky + scrollable) ── */}
         <aside className="lg:sticky lg:top-[4.5rem] lg:self-start">
           <div className="lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:rounded-xl lg:border lg:border-border lg:bg-card lg:px-5 lg:py-5">
             <CommentsBlock
@@ -285,7 +278,7 @@ export default async function SubmissionDetailPage({
               canComment={vis === "PRIVATE" || commentsOk}
               canRate={canView}
               hasOwnComment={hasOwnComment}
-              signedInUserId={effectiveUserId}
+              signedInUserId={session.user.id}
               isInstructor={classManager}
               ratingAverage={rating.average}
               ratingCount={rating.count}

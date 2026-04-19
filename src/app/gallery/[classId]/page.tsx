@@ -2,10 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listPublicSubmissionsForClass } from "@/lib/gallery";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { leanOne } from "@/lib/mongoose-lean";
-import type { LeanClassFull } from "@/lib/types/lean";
+import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,9 +15,9 @@ export default async function ClassGalleryPage({
 }) {
   const { classId } = await params;
 
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) notFound();
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) notFound();
+  const cls = toLeanClassFull(clsRaw);
 
   const items = await listPublicSubmissionsForClass(classId);
   const ratings = await getRatingStatsBySubmissionIds(items.map((s) => s._id));

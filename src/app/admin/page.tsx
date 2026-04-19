@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { User } from "@/lib/models/User";
-import { ClassModel } from "@/lib/models/Class";
-import { Enrollment } from "@/lib/models/Enrollment";
-import { Submission } from "@/lib/models/Submission";
+import { listGlobalAdmins } from "@/lib/firestore/users";
+import { findClassByJoinCode, listAllClassesByTitle } from "@/lib/firestore/classes";
+import { listStudentEnrollmentsForClass } from "@/lib/firestore/enrollments";
+import { countSubmissionsPerClass } from "@/lib/firestore/submissions";
+import { listUsersByIds } from "@/lib/firestore/users";
 import { getBootstrapAdminIds } from "@/lib/admin";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,14 +24,8 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
-  await dbConnect();
-
-  // --- Admin list ---
   const bootstrapIds = getBootstrapAdminIds();
-  const dbAdmins = (await User.find({ role: "GLOBAL_ADMIN" }).lean()) as unknown as {
-    sfuId?: string;
-    name?: string;
-  }[];
+  const dbAdmins = await listGlobalAdmins();
 
   const seen = new Set<string>();
   const admins: AdminUser[] = [];
@@ -46,39 +40,27 @@ export default async function AdminPage() {
   }
   admins.sort((a, b) => a.sfuId.localeCompare(b.sfuId));
 
-  // --- All classes for export ---
-  type ExportClass = { _id: { toString(): string }; title: string; submissionCount: number };
-  const allClasses = (await ClassModel.find().sort({ title: 1 }).select("_id title").lean()) as unknown as {
-    _id: { toString(): string };
-    title: string;
-  }[];
-  const submissionCounts = await Submission.aggregate([
-    { $group: { _id: "$classId", count: { $sum: 1 } } },
-  ]) as { _id: { toString(): string }; count: number }[];
-  const countMap = new Map(submissionCounts.map((r) => [r._id.toString(), r.count]));
+  type ExportClass = { _id: string; title: string; submissionCount: number };
+  const allClasses = await listAllClassesByTitle();
+  const countMap = await countSubmissionsPerClass();
   const exportClasses: ExportClass[] = allClasses.map((c) => ({
-    _id: c._id,
+    _id: c.id,
     title: c.title,
-    submissionCount: countMap.get(c._id.toString()) ?? 0,
+    submissionCount: countMap.get(c.id) ?? 0,
   }));
 
-  // --- Demo data ---
-  const demoClass = (await ClassModel.findOne({ joinCode: DEMO_JOIN_CODE }).lean()) as unknown as {
-    _id: { toString(): string };
-    title: string;
-    joinCode: string;
-  } | null;
+  const demoClassRaw = await findClassByJoinCode(DEMO_JOIN_CODE);
+  const demoClass = demoClassRaw
+    ? { _id: demoClassRaw.id, title: demoClassRaw.title, joinCode: demoClassRaw.joinCode }
+    : null;
 
-  type DemoStudent = { _id: { toString(): string }; sfuId?: string; name?: string };
+  type DemoStudent = { _id: string; sfuId?: string; name?: string };
   let demoStudents: DemoStudent[] = [];
   if (demoClass) {
-    const enrollments = (await Enrollment.find({ classId: demoClass._id, role: "STUDENT" })
-      .select("userId")
-      .lean()) as unknown as { userId: { toString(): string } }[];
+    const enrollments = await listStudentEnrollmentsForClass(demoClass._id);
     const userIds = enrollments.map((e) => e.userId);
-    demoStudents = (await User.find({ _id: { $in: userIds } })
-      .select("sfuId name")
-      .lean()) as unknown as DemoStudent[];
+    const users = await listUsersByIds(userIds);
+    demoStudents = users.map((u) => ({ _id: u.id, sfuId: u.sfuId, name: u.name }));
     demoStudents.sort((a, b) => (a.sfuId ?? "").localeCompare(b.sfuId ?? ""));
   }
 
@@ -93,7 +75,6 @@ export default async function AdminPage() {
 
       <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
 
-      {/* ── Demo data ───────────────────────────────────────── */}
       <section className="mt-8 space-y-4">
         <div>
           <h2 className="text-base font-semibold">Demo data</h2>
@@ -122,7 +103,6 @@ export default async function AdminPage() {
         <SeedControls demoExists={!!demoClass} />
       </section>
 
-      {/* ── Student preview ─────────────────────────────────── */}
       {demoClass && demoStudents.length > 0 && (
         <>
           <Separator className="my-8" />
@@ -137,7 +117,7 @@ export default async function AdminPage() {
             <div className="overflow-hidden rounded-xl border border-border bg-card">
               <ul className="divide-y divide-border">
                 {demoStudents.map((s) => (
-                  <li key={s._id.toString()} className="flex items-center justify-between gap-4 px-4 py-3">
+                  <li key={s._id} className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-medium">{s.sfuId}</span>
                       {s.name && (
@@ -145,7 +125,7 @@ export default async function AdminPage() {
                       )}
                     </div>
                     <a
-                      href={`/admin/preview?userId=${s._id.toString()}`}
+                      href={`/admin/preview?userId=${s._id}`}
                       className={buttonVariants({ variant: "outline", size: "xs" })}
                     >
                       Preview as
@@ -160,7 +140,6 @@ export default async function AdminPage() {
 
       <Separator className="my-8" />
 
-      {/* ── Export ──────────────────────────────────────────── */}
       <section className="space-y-4">
         <div>
           <h2 className="text-base font-semibold">Export data</h2>
@@ -174,7 +153,7 @@ export default async function AdminPage() {
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <ul className="divide-y divide-border">
               {exportClasses.map((c) => (
-                <li key={c._id.toString()} className="flex items-center justify-between gap-4 px-4 py-3">
+                <li key={c._id} className="flex items-center justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{c.title}</p>
                     <p className="text-xs text-muted-foreground">
@@ -183,13 +162,13 @@ export default async function AdminPage() {
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <a
-                      href={`/api/admin/export/submissions?classId=${c._id.toString()}`}
+                      href={`/api/admin/export/submissions?classId=${c._id}`}
                       className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
                     >
                       Submissions
                     </a>
                     <a
-                      href={`/api/admin/export/comments?classId=${c._id.toString()}`}
+                      href={`/api/admin/export/comments?classId=${c._id}`}
                       className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
                     >
                       Comments
@@ -204,7 +183,6 @@ export default async function AdminPage() {
 
       <Separator className="my-8" />
 
-      {/* ── Admins ──────────────────────────────────────────── */}
       <section className="space-y-4">
         <div>
           <h2 className="text-base font-semibold">Admins</h2>

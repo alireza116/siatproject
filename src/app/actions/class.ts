@@ -1,10 +1,9 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import { isClassAppManager } from "@/lib/class-access";
-import { ClassModel } from "@/lib/models/Class";
-import { Enrollment } from "@/lib/models/Enrollment";
+import { createClass, findClassByJoinCode } from "@/lib/firestore/classes";
+import { createInstructorEnrollment, deleteEnrollment, getEnrollment, upsertStudentEnrollment } from "@/lib/firestore/enrollments";
 import { customAlphabet } from "nanoid";
 import { revalidatePath } from "next/cache";
 
@@ -24,21 +23,16 @@ export async function createClassAction(formData: FormData) {
   if (session.user.role !== "GLOBAL_ADMIN") {
     return { ok: false as const, error: "Only admins can create a class." };
   }
-  await dbConnect();
   const joinCode = code();
-  const cls = await ClassModel.create({
+  const classId = await createClass({
     title,
     description,
     joinCode,
     ownerId: session.user.id,
   });
-  await Enrollment.create({
-    classId: cls._id,
-    userId: session.user.id,
-    role: "INSTRUCTOR",
-  });
+  await createInstructorEnrollment(classId, session.user.id);
   revalidatePath("/dashboard");
-  return { ok: true as const, classId: cls._id.toString() };
+  return { ok: true as const, classId };
 }
 
 export async function joinClassAction(formData: FormData) {
@@ -52,25 +46,14 @@ export async function joinClassAction(formData: FormData) {
   if (!joinCode) {
     return { ok: false as const, error: "Join code is required" };
   }
-  await dbConnect();
-  const cls = await ClassModel.findOne({ joinCode });
+  const cls = await findClassByJoinCode(joinCode);
   if (!cls) {
     return { ok: false as const, error: "Class not found" };
   }
-  await Enrollment.findOneAndUpdate(
-    { classId: cls._id, userId: session.user.id },
-    {
-      $setOnInsert: {
-        classId: cls._id,
-        userId: session.user.id,
-        role: "STUDENT",
-      },
-    },
-    { upsert: true },
-  );
+  await upsertStudentEnrollment(cls.id, session.user.id);
   revalidatePath("/dashboard");
-  revalidatePath(`/classes/${cls._id}`);
-  return { ok: true as const, classId: cls._id.toString() };
+  revalidatePath(`/classes/${cls.id}`);
+  return { ok: true as const, classId: cls.id };
 }
 
 export async function leaveClassAction(classId: string) {
@@ -78,15 +61,14 @@ export async function leaveClassAction(classId: string) {
   if (!session?.user?.id) {
     return { ok: false as const, error: "Not allowed" };
   }
-  await dbConnect();
-  const enrollment = await Enrollment.findOne({ classId, userId: session.user.id });
+  const enrollment = await getEnrollment(classId, session.user.id);
   if (!enrollment) {
     return { ok: false as const, error: "Not enrolled in this class" };
   }
   if (enrollment.role === "INSTRUCTOR") {
     return { ok: false as const, error: "Instructors cannot leave a class this way. Contact the class owner." };
   }
-  await Enrollment.deleteOne({ classId, userId: session.user.id });
+  await deleteEnrollment(classId, session.user.id);
   revalidatePath("/dashboard");
   revalidatePath(`/classes/${classId}`);
   return { ok: true as const };
@@ -104,15 +86,14 @@ export async function removeStudentAction(classId: string, userId: string) {
   if (!canManage) {
     return { ok: false as const, error: "Not allowed" };
   }
-  await dbConnect();
-  const enrollment = await Enrollment.findOne({ classId, userId });
+  const enrollment = await getEnrollment(classId, userId);
   if (!enrollment) {
     return { ok: false as const, error: "Enrollment not found" };
   }
   if (enrollment.role === "INSTRUCTOR") {
     return { ok: false as const, error: "Cannot remove an instructor enrollment." };
   }
-  await Enrollment.deleteOne({ classId, userId });
+  await deleteEnrollment(classId, userId);
   revalidatePath(`/classes/${classId}`);
   revalidatePath("/dashboard");
   return { ok: true as const };

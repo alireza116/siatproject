@@ -1,8 +1,7 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { User } from "@/lib/models/User";
+import { updateUserSfuIdIfFree } from "@/lib/firestore/users";
 import { isValidSfuId, normalizeSfuId } from "@/lib/sfu-id";
 import { revalidatePath } from "next/cache";
 
@@ -16,12 +15,10 @@ export async function updateSfuIdAction(formData: FormData) {
     return { ok: false as const, error: "Enter a valid SFU computing ID or 9-digit student number." };
   }
   const sfuId = normalizeSfuId(raw);
-  await dbConnect();
-  const existing = await User.findOne({ sfuId, _id: { $ne: session.user.id } });
-  if (existing) {
+  const ok = await updateUserSfuIdIfFree(session.user.id, sfuId);
+  if (!ok) {
     return { ok: false as const, error: "That SFU ID is already linked to another account." };
   }
-  await User.findByIdAndUpdate(session.user.id, { $set: { sfuId } });
   revalidatePath("/", "layout");
   return { ok: true as const };
 }

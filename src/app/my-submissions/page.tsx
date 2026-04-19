@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { Submission } from "@/lib/models/Submission";
+import { getClassesByIds, toLeanClassFull } from "@/lib/firestore/classes";
+import { listSubmissionsForUser, toLeanSubmissionFull } from "@/lib/firestore/submissions";
 import { getViewAsUserId } from "@/lib/view-as";
 import { effectiveVisibility } from "@/lib/visibility";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
+
 export default async function MySubmissionsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/");
@@ -18,25 +18,22 @@ export default async function MySubmissionsPage() {
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
 
-  await dbConnect();
-  const subs = (await Submission.find({
-    $or: [{ createdById: effectiveUserId }, { authorUserIds: effectiveUserId }],
-  })
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanSubmissionFull[];
+  const subsRaw = await listSubmissionsForUser(effectiveUserId);
+  const subs = subsRaw.map(toLeanSubmissionFull);
 
-  const classIds = [...new Set(subs.map((s) => s.classId.toString()))];
-  const classes = (await ClassModel.find({ _id: { $in: classIds } }).lean()) as unknown as LeanClassFull[];
-  const classById = new Map(classes.map((c) => [c._id.toString(), c]));
+  const classIds = [...new Set(subs.map((s) => s.classId))];
+  const classesRaw = await getClassesByIds(classIds);
+  const classes = classesRaw.map(toLeanClassFull);
+  const classById = new Map(classes.map((c) => [c._id, c]));
 
   const rows = subs
     .map((s) => {
-      const cls = classById.get(s.classId.toString());
+      const cls = classById.get(s.classId);
       if (!cls) return null;
       return { s, cls };
     })
     .filter((r): r is { s: LeanSubmissionFull; cls: LeanClassFull } => r !== null);
-  const ratings = await getRatingStatsBySubmissionIds(rows.map((r) => r.s._id.toString()));
+  const ratings = await getRatingStatsBySubmissionIds(rows.map((r) => r.s._id));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -61,9 +58,9 @@ export default async function MySubmissionsPage() {
           <ul className="divide-y divide-border">
             {rows.map(({ s, cls }) => {
               const vis = effectiveVisibility(s, cls);
-              const classId = s.classId.toString();
+              const classId = s.classId;
               return (
-                <li key={s._id.toString()}>
+                <li key={s._id}>
                   <Link
                     href={`/classes/${classId}/submissions/${s._id}`}
                     className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-muted/50"
@@ -78,7 +75,7 @@ export default async function MySubmissionsPage() {
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {(() => {
-                          const r = ratings.get(s._id.toString());
+                          const r = ratings.get(s._id);
                           if (!r || r.count === 0) return "Rating: not rated yet";
                           return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
                         })()}

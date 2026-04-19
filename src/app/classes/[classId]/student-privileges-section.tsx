@@ -1,7 +1,5 @@
-import { dbConnect } from "@/lib/db/connect";
-import { Enrollment } from "@/lib/models/Enrollment";
-import { User } from "@/lib/models/User";
-import type { LeanEnrollment } from "@/lib/types/lean";
+import { listStudentEnrollmentsForClass } from "@/lib/firestore/enrollments";
+import { listUsersByIds } from "@/lib/firestore/users";
 import { StudentPrivilegeRow } from "./student-privilege-row";
 
 type Row = {
@@ -12,13 +10,8 @@ type Row = {
   studentCanChangeVisibility: boolean;
 };
 
-type LeanUserBrief = { _id: { toString(): string }; sfuId?: string; name?: string };
-
 export async function StudentPrivilegesSection({ classId }: { classId: string }) {
-  await dbConnect();
-  const enrollments = (await Enrollment.find({ classId, role: "STUDENT" })
-    .sort({ createdAt: 1 })
-    .lean()) as unknown as LeanEnrollment[];
+  const enrollments = await listStudentEnrollmentsForClass(classId);
 
   if (enrollments.length === 0) {
     return (
@@ -30,17 +23,15 @@ export async function StudentPrivilegesSection({ classId }: { classId: string })
   }
 
   const userIds = enrollments.map((e) => e.userId);
-  const users = (await User.find({ _id: { $in: userIds } })
-    .select("name sfuId")
-    .lean()) as unknown as LeanUserBrief[];
-  const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+  const users = await listUsersByIds(userIds);
+  const userMap = new Map(users.map((u) => [u.id, u]));
 
   const rows: Row[] = enrollments.map((e) => {
-    const u = userMap.get(e.userId.toString());
+    const u = userMap.get(e.userId);
     const label =
-      u?.sfuId && u?.name ? `${u.sfuId} — ${u.name}` : u?.sfuId ?? u?.name ?? e.userId.toString();
+      u?.sfuId && u?.name ? `${u.sfuId} — ${u.name}` : u?.sfuId ?? u?.name ?? e.userId;
     return {
-      userId: e.userId.toString(),
+      userId: e.userId,
       label,
       studentCanEditSubmissions: e.studentCanEditSubmissions === true,
       studentCanDeleteSubmissions: e.studentCanDeleteSubmissions === true,

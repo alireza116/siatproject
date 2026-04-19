@@ -1,28 +1,16 @@
-import type { Types } from "mongoose";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { Enrollment } from "@/lib/models/Enrollment";
-import { leanOne } from "@/lib/mongoose-lean";
-import type { LeanClassFull, LeanEnrollment } from "@/lib/types/lean";
-
-export async function getEnrollment(userId: string, classId: string) {
-  await dbConnect();
-  return Enrollment.findOne({ userId, classId }).lean();
-}
+import { getClassById } from "@/lib/firestore/classes";
+import { getEnrollment } from "@/lib/firestore/enrollments";
 
 export async function isClassInstructor(userId: string, classId: string): Promise<boolean> {
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
+  const cls = await getClassById(classId);
   if (!cls) return false;
-  if (cls.ownerId.toString() === userId) return true;
-  const rawEn = await Enrollment.findOne({ classId, userId }).lean();
-  const en = leanOne<LeanEnrollment>(rawEn);
+  if (cls.ownerId === userId) return true;
+  const en = await getEnrollment(classId, userId);
   return en?.role === "INSTRUCTOR" || en?.role === "ASSISTANT";
 }
 
 export async function canAccessClass(userId: string, classId: string): Promise<boolean> {
-  await dbConnect();
-  const en = await Enrollment.findOne({ classId, userId }).lean();
+  const en = await getEnrollment(classId, userId);
   return !!en;
 }
 
@@ -34,8 +22,7 @@ export async function canAccessClassOrGlobalAdmin(
 ): Promise<boolean> {
   if (await canAccessClass(userId, classId)) return true;
   if (options.isGlobalAdmin) {
-    await dbConnect();
-    return !!(await ClassModel.findById(classId).lean());
+    return !!(await getClassById(classId));
   }
   return false;
 }
@@ -51,7 +38,6 @@ export async function getStudentSubmissionPrivileges(
   userId: string,
   classId: string
 ): Promise<StudentSubmissionPrivileges> {
-  await dbConnect();
   if (await isClassInstructor(userId, classId)) {
     return {
       canEditSubmissions: true,
@@ -59,8 +45,7 @@ export async function getStudentSubmissionPrivileges(
       canChangeVisibility: true,
     };
   }
-  const raw = await Enrollment.findOne({ classId, userId }).lean();
-  const en = leanOne<LeanEnrollment>(raw);
+  const en = await getEnrollment(classId, userId);
   if (!en || en.role !== "STUDENT") {
     return {
       canEditSubmissions: false,
@@ -86,6 +71,6 @@ export async function isClassAppManager(
   return isClassInstructor(sessionUserId, classId);
 }
 
-export function idEq(a: string | Types.ObjectId, b: string | Types.ObjectId): boolean {
-  return a.toString() === b.toString();
+export function idEq(a: string, b: string): boolean {
+  return a === b;
 }

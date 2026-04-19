@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { Enrollment } from "@/lib/models/Enrollment";
-import { ClassModel } from "@/lib/models/Class";
+import { getClassesByIds } from "@/lib/firestore/classes";
+import { listEnrollmentsForUser } from "@/lib/firestore/enrollments";
 import { JoinForm } from "@/app/dashboard/join-form";
 import { LeaveClassButton } from "@/app/dashboard/leave-class-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -11,18 +10,19 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import type { LeanClassFull, LeanEnrollment } from "@/lib/types/lean";
+import { toLeanClassFull } from "@/lib/firestore/classes";
 
 function isTeachingEnrollment(
   e: LeanEnrollment,
   cls: LeanClassFull,
   userId: string
 ): boolean {
-  if (cls.ownerId.toString() === userId) return true;
+  if (cls.ownerId === userId) return true;
   return e.role === "INSTRUCTOR" || e.role === "ASSISTANT";
 }
 
 function isStudentEnrollment(e: LeanEnrollment, cls: LeanClassFull, userId: string): boolean {
-  if (cls.ownerId.toString() === userId) return false;
+  if (cls.ownerId === userId) return false;
   return e.role === "STUDENT";
 }
 
@@ -37,22 +37,29 @@ export default async function DashboardPage() {
 
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
-  // When previewing as a student, suppress admin privileges so we see the student experience
   const isAdmin = !viewAsUserId && session.user.role === "GLOBAL_ADMIN";
 
-  await dbConnect();
-  const enrollments = (await Enrollment.find({ userId: effectiveUserId })
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanEnrollment[];
+  const enrollmentsRaw = await listEnrollmentsForUser(effectiveUserId);
+  const enrollments: LeanEnrollment[] = enrollmentsRaw.map((e) => ({
+    _id: e.id,
+    classId: e.classId,
+    userId: e.userId,
+    role: e.role,
+    createdAt: e.createdAt,
+    studentCanEditSubmissions: e.studentCanEditSubmissions,
+    studentCanDeleteSubmissions: e.studentCanDeleteSubmissions,
+    studentCanChangeVisibility: e.studentCanChangeVisibility,
+  }));
 
   const classIds = enrollments.map((e) => e.classId);
-  const classes = (await ClassModel.find({ _id: { $in: classIds } }).lean()) as unknown as LeanClassFull[];
-  const byId = new Map(classes.map((c) => [c._id.toString(), c]));
+  const classesRaw = await getClassesByIds(classIds);
+  const classes = classesRaw.map(toLeanClassFull);
+  const byId = new Map(classes.map((c) => [c._id, c]));
 
   const teaching: { e: LeanEnrollment; c: LeanClassFull }[] = [];
   const learning: { e: LeanEnrollment; c: LeanClassFull }[] = [];
   for (const e of enrollments) {
-    const c = byId.get(e.classId.toString());
+    const c = byId.get(e.classId);
     if (!c) continue;
     if (isTeachingEnrollment(e, c, effectiveUserId)) {
       teaching.push({ e, c });
@@ -104,7 +111,7 @@ export default async function DashboardPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {teaching.map(({ e, c }) => (
-                  <li key={e._id.toString()} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                  <li key={e._id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
                     <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-foreground">
                       <p className="font-medium text-foreground">{c.title}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -148,7 +155,7 @@ export default async function DashboardPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {learning.map(({ e, c }) => (
-                  <li key={e._id.toString()} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                  <li key={e._id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
                     <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-foreground">
                       <p className="font-medium text-foreground">{c.title}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground font-mono">{c.joinCode}</p>
@@ -160,7 +167,7 @@ export default async function DashboardPage() {
                       >
                         View projects
                       </Link>
-                      <LeaveClassButton classId={c._id.toString()} />
+                      <LeaveClassButton classId={c._id} />
                     </div>
                   </li>
                 ))}

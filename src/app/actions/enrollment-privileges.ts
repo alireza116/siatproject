@@ -1,9 +1,8 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import { isClassAppManager } from "@/lib/class-access";
-import { Enrollment } from "@/lib/models/Enrollment";
+import { updateStudentPrivileges } from "@/lib/firestore/enrollments";
 import { revalidatePath } from "next/cache";
 
 function flagOn(formData: FormData, name: string): boolean {
@@ -30,16 +29,14 @@ export async function updateStudentEnrollmentPrivilegesAction(formData: FormData
     return { ok: false as const, error: "Not allowed" };
   }
 
-  await dbConnect();
-  const en = await Enrollment.findOne({ classId, userId: studentUserId, role: "STUDENT" });
-  if (!en) {
+  const ok = await updateStudentPrivileges(classId, studentUserId, {
+    studentCanEditSubmissions: flagOn(formData, "studentCanEditSubmissions"),
+    studentCanDeleteSubmissions: flagOn(formData, "studentCanDeleteSubmissions"),
+    studentCanChangeVisibility: flagOn(formData, "studentCanChangeVisibility"),
+  });
+  if (!ok) {
     return { ok: false as const, error: "Student enrollment not found" };
   }
-
-  en.studentCanEditSubmissions = flagOn(formData, "studentCanEditSubmissions");
-  en.studentCanDeleteSubmissions = flagOn(formData, "studentCanDeleteSubmissions");
-  en.studentCanChangeVisibility = flagOn(formData, "studentCanChangeVisibility");
-  await en.save();
 
   revalidatePath(`/classes/${classId}`, "layout");
   revalidatePath(`/classes/${classId}/submissions/new`);
