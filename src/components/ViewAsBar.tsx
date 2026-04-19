@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { VIEW_AS_COOKIE } from "@/lib/view-as";
-import { dbConnect } from "@/lib/db/connect";
-import { User } from "@/lib/models/User";
+import { getUserById } from "@/lib/firestore/users";
 
 export async function ViewAsBar() {
   const session = await auth();
@@ -12,12 +11,7 @@ export async function ViewAsBar() {
   const viewAsUserId = store.get(VIEW_AS_COOKIE)?.value;
   if (!viewAsUserId) return null;
 
-  await dbConnect();
-  const student = (await User.findById(viewAsUserId).lean()) as unknown as {
-    sfuId?: string;
-    name?: string;
-  } | null;
-
+  const student = await getUserById(viewAsUserId);
   const label = student?.sfuId ?? student?.name ?? viewAsUserId;
 
   return (

@@ -1,23 +1,28 @@
 "use server";
 
-import type { Types } from "mongoose";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import {
   canAccessClass,
   getStudentSubmissionPrivileges,
   idEq,
   isClassAppManager,
 } from "@/lib/class-access";
-import { ClassModel } from "@/lib/models/Class";
-import { Comment } from "@/lib/models/Comment";
-import { CommentVote } from "@/lib/models/CommentVote";
-import { Submission } from "@/lib/models/Submission";
-import { SubmissionRating } from "@/lib/models/SubmissionRating";
-import { User } from "@/lib/models/User";
+import {
+  deleteAllCommentsForSubmission,
+  deleteCommentVotesForCommentIds,
+  deleteSubmissionRatingsForSubmission,
+  listCommentIdsForSubmission,
+} from "@/lib/firestore/comments";
+import { getClassById } from "@/lib/firestore/classes";
+import {
+  createSubmission,
+  deleteSubmission,
+  getSubmissionById,
+  updateSubmission,
+} from "@/lib/firestore/submissions";
+import { findUsersBySfuIds, getUserById } from "@/lib/firestore/users";
 import { extractYoutubeVideoIds, isAllowedProjectUrl } from "@/lib/youtube";
-import { leanOne } from "@/lib/mongoose-lean";
-import type { LeanClassFull, LeanUser } from "@/lib/types/lean";
+import type { LeanUser } from "@/lib/types/lean";
 import { revalidatePath } from "next/cache";
 
 function parseLines(raw: string): string[] {
@@ -60,16 +65,22 @@ export async function createSubmissionAction(formData: FormData) {
     return { ok: false as const, error: "Not enrolled in this class" };
   }
 
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) return { ok: false as const, error: "Class not found" };
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) return { ok: false as const, error: "Class not found" };
 
-  const rawMe = await User.findById(session.user.id).lean();
-  if (!rawMe || Array.isArray(rawMe)) {
+  const me = await getUserById(session.user.id);
+  if (!me) {
     return { ok: false as const, error: "User not found" };
   }
-  const me = rawMe as unknown as LeanUser;
-  if (!me.sfuId) {
+  const leanMe: LeanUser = {
+    _id: me.id,
+    sfuId: me.sfuId,
+    name: me.name,
+    email: me.email,
+    image: me.image,
+    role: me.role,
+  };
+  if (!leanMe.sfuId) {
     return { ok: false as const, error: "SFU ID required" };
   }
 
@@ -89,28 +100,23 @@ export async function createSubmissionAction(formData: FormData) {
   }
 
   const coauthorRaw = parseLines(String(formData.get("coauthorSfuIds") ?? ""));
-  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== me.sfuId))];
-  const coauthorUsers =
-    coauthorSfuIds.length > 0
-      ? ((await User.find({ sfuId: { $in: coauthorSfuIds } })
-          .select("_id sfuId name")
-          .lean()) as unknown as LeanUser[])
-      : [];
+  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== leanMe.sfuId))];
+  const coauthorUsers = coauthorSfuIds.length > 0 ? await findUsersBySfuIds(coauthorSfuIds) : [];
   const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
 
   const authorUserIds: string[] = [session.user.id];
-  const authorNames: string[] = [me.name ?? me.sfuId ?? "Student"];
-  const authorSfuIds: string[] = [me.sfuId];
+  const authorNames: string[] = [leanMe.name ?? leanMe.sfuId ?? "Student"];
+  const authorSfuIds: string[] = [leanMe.sfuId];
   for (const sfuId of coauthorSfuIds) {
     const u = coauthorUserMap.get(sfuId);
-    if (u?._id) authorUserIds.push(u._id.toString());
+    if (u?.id) authorUserIds.push(u.id);
     authorNames.push(u?.name ?? sfuId);
     authorSfuIds.push(sfuId);
   }
 
-  let sub;
+  let id: string;
   try {
-    sub = await Submission.create({
+    id = await createSubmission({
       classId,
       groupName,
       title,
@@ -132,7 +138,7 @@ export async function createSubmissionAction(formData: FormData) {
   revalidatePath("/my-submissions");
   revalidatePath("/gallery");
   revalidatePath(`/gallery/${classId}`);
-  return { ok: true as const, id: sub._id.toString() };
+  return { ok: true as const, id };
 }
 
 export async function updateSubmissionAction(formData: FormData) {
@@ -141,17 +147,16 @@ export async function updateSubmissionAction(formData: FormData) {
     return { ok: false as const, error: "Not allowed" };
   }
   const submissionId = String(formData.get("submissionId") ?? "");
-  await dbConnect();
-  const sub = await Submission.findById(submissionId);
+  const sub = await getSubmissionById(submissionId);
   if (!sub) return { ok: false as const, error: "Not found" };
 
-  const classIdStr = sub.classId.toString();
+  const classIdStr = sub.classId;
   const classManager = await isClassAppManager(session.user.id, classIdStr, {
     globalRole: session.user.role,
     viewAsActive: false,
   });
   const isAuthor =
-    (sub.authorUserIds ?? []).some((id: Types.ObjectId) => idEq(id, session.user.id)) ||
+    (sub.authorUserIds ?? []).some((id) => idEq(id, session.user.id)) ||
     idEq(sub.createdById, session.user.id);
 
   if (!classManager && !isAuthor) {
@@ -190,49 +195,56 @@ export async function updateSubmissionAction(formData: FormData) {
     return { ok: false as const, error: "Add at least one valid YouTube URL or video ID" };
   }
 
-  // Rebuild author arrays: creator stays first, co-authors are replaced
-  const creatorDoc = (await User.findById(sub.createdById)
-    .select("_id sfuId name")
-    .lean()) as unknown as LeanUser | null;
+  const creatorDoc = await getUserById(sub.createdById);
+  const creatorLean: LeanUser | null = creatorDoc
+    ? {
+        _id: creatorDoc.id,
+        sfuId: creatorDoc.sfuId,
+        name: creatorDoc.name,
+        email: creatorDoc.email,
+        image: creatorDoc.image,
+        role: creatorDoc.role,
+      }
+    : null;
   const coauthorRaw = parseLines(String(formData.get("coauthorSfuIds") ?? ""));
-  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== creatorDoc?.sfuId))];
-  const coauthorUsers =
-    coauthorSfuIds.length > 0
-      ? ((await User.find({ sfuId: { $in: coauthorSfuIds } })
-          .select("_id sfuId name")
-          .lean()) as unknown as LeanUser[])
-      : [];
+  const coauthorSfuIds = [...new Set(coauthorRaw.filter((id) => id !== creatorLean?.sfuId))];
+  const coauthorUsers = coauthorSfuIds.length > 0 ? await findUsersBySfuIds(coauthorSfuIds) : [];
   const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
 
-  const newAuthorUserIds: string[] = [sub.createdById.toString()];
-  const newAuthorNames: string[] = [creatorDoc?.name ?? creatorDoc?.sfuId ?? "Student"];
-  const newAuthorSfuIds: string[] = [creatorDoc?.sfuId ?? ""];
+  const newAuthorUserIds: string[] = [sub.createdById];
+  const newAuthorNames: string[] = [creatorLean?.name ?? creatorLean?.sfuId ?? sub.authorNames[0] ?? "Student"];
+  const newAuthorSfuIds: string[] = [creatorLean?.sfuId ?? sub.authorSfuIds[0] ?? ""];
   for (const sfuId of coauthorSfuIds) {
     const u = coauthorUserMap.get(sfuId);
-    if (u?._id) newAuthorUserIds.push(u._id.toString());
+    if (u?.id) newAuthorUserIds.push(u.id);
     newAuthorNames.push(u?.name ?? sfuId);
     newAuthorSfuIds.push(sfuId);
   }
 
-  sub.title = title;
-  sub.groupName = groupName;
-  sub.description = description ?? null;
-  sub.projectUrls = projectUrls;
-  sub.youtubeVideoIds = youtubeVideoIds;
-  sub.authorUserIds = newAuthorUserIds;
-  sub.authorNames = newAuthorNames;
-  sub.authorSfuIds = newAuthorSfuIds;
-
+  let visibility: "PRIVATE" | "PUBLIC" | undefined;
+  let commentsEnabled: boolean | undefined;
   if (canChangeVisibility) {
     if (vis === "PUBLIC" || vis === "PRIVATE") {
-      sub.visibility = vis;
+      visibility = vis;
     }
     if (ce === "true" || ce === "false") {
-      sub.commentsEnabled = ce === "true";
+      commentsEnabled = ce === "true";
     }
   }
 
-  await sub.save();
+  await updateSubmission(submissionId, {
+    title,
+    groupName,
+    description: description ?? null,
+    projectUrls,
+    youtubeVideoIds,
+    authorUserIds: newAuthorUserIds,
+    authorNames: newAuthorNames,
+    authorSfuIds: newAuthorSfuIds,
+    visibility,
+    commentsEnabled,
+  });
+
   revalidatePath(`/classes/${sub.classId}`);
   revalidatePath("/my-submissions");
   revalidatePath("/gallery");
@@ -246,16 +258,15 @@ export async function deleteSubmissionAction(submissionId: string) {
   if (!session?.user?.id) {
     return { ok: false as const, error: "Not allowed" };
   }
-  await dbConnect();
-  const sub = await Submission.findById(submissionId);
+  const sub = await getSubmissionById(submissionId);
   if (!sub) return { ok: false as const, error: "Not found" };
-  const classIdStr = sub.classId.toString();
+  const classIdStr = sub.classId;
   const classManager = await isClassAppManager(session.user.id, classIdStr, {
     globalRole: session.user.role,
     viewAsActive: false,
   });
   const isAuthor =
-    (sub.authorUserIds ?? []).some((id: Types.ObjectId) => idEq(id, session.user.id)) ||
+    (sub.authorUserIds ?? []).some((id) => idEq(id, session.user.id)) ||
     idEq(sub.createdById, session.user.id);
 
   if (!classManager) {
@@ -267,12 +278,11 @@ export async function deleteSubmissionAction(submissionId: string) {
       return { ok: false as const, error: "Deleting your submissions is disabled for this class." };
     }
   }
-  const commentDocs = (await Comment.find({ submissionId }, "_id").lean()) as { _id: Types.ObjectId }[];
-  const commentIds = commentDocs.map((c) => c._id);
-  await CommentVote.deleteMany({ commentId: { $in: commentIds } });
-  await SubmissionRating.deleteMany({ submissionId });
-  await Comment.deleteMany({ submissionId });
-  await Submission.deleteOne({ _id: submissionId });
+  const commentIds = await listCommentIdsForSubmission(submissionId);
+  await deleteCommentVotesForCommentIds(commentIds);
+  await deleteSubmissionRatingsForSubmission(submissionId);
+  await deleteAllCommentsForSubmission(submissionId);
+  await deleteSubmission(submissionId);
   revalidatePath(`/classes/${sub.classId}`);
   revalidatePath("/my-submissions");
   revalidatePath("/gallery");

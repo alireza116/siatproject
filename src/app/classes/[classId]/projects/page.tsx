@@ -5,12 +5,10 @@ import { auth } from "@/auth";
 import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
 import { canStudentViewSubmissionInClass } from "@/lib/submission-access";
 import { getViewAsUserId } from "@/lib/view-as";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { Submission } from "@/lib/models/Submission";
-import { leanOne } from "@/lib/mongoose-lean";
+import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
+import { listSubmissionsByClass, toLeanSubmissionFull } from "@/lib/firestore/submissions";
 import { effectiveVisibility } from "@/lib/visibility";
-import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
+import type { LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -33,11 +31,11 @@ export default async function ClassProjectsPage({
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
 
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) {
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) {
     notFound();
   }
+  const cls = toLeanClassFull(clsRaw);
 
   const allowed = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
     isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
@@ -56,9 +54,8 @@ export default async function ClassProjectsPage({
     );
   }
 
-  const allSubmissions = (await Submission.find({ classId: cls._id })
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanSubmissionFull[];
+  const subsRaw = await listSubmissionsByClass(classId);
+  const allSubmissions: LeanSubmissionFull[] = subsRaw.map(toLeanSubmissionFull);
 
   const classManager =
     !viewAsUserId &&
@@ -70,7 +67,7 @@ export default async function ClassProjectsPage({
     ? allSubmissions
     : allSubmissions.filter((s) => canStudentViewSubmissionInClass(s, cls, effectiveUserId));
   const ratings = await getRatingStatsBySubmissionIds(
-    submissions.map((s) => s._id.toString())
+    submissions.map((s) => s._id)
   );
 
   return (
@@ -104,7 +101,7 @@ export default async function ClassProjectsPage({
             const vis = effectiveVisibility(s, cls);
             const thumb = s.youtubeVideoIds?.[0];
             return (
-              <li key={s._id.toString()}>
+              <li key={s._id}>
                 <Link
                   href={`/classes/${classId}/submissions/${s._id}`}
                   className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-foreground/20 hover:shadow"
@@ -137,7 +134,7 @@ export default async function ClassProjectsPage({
                     )}
                     <p className="mt-2 text-xs text-muted-foreground">
                       {(() => {
-                        const r = ratings.get(s._id.toString());
+                        const r = ratings.get(s._id);
                         if (!r || r.count === 0) return "Rating: not rated yet";
                         return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
                       })()}

@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { Submission } from "@/lib/models/Submission";
+import { getClassById } from "@/lib/firestore/classes";
+import { listSubmissionsByClass } from "@/lib/firestore/submissions";
 
 function csvCell(value: unknown): string {
   const s = value == null ? "" : String(value);
@@ -24,30 +23,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "classId is required" }, { status: 400 });
   }
 
-  await dbConnect();
-
-  const cls = (await ClassModel.findById(classId).lean()) as unknown as {
-    _id: { toString(): string };
-    title: string;
-    defaultVisibility: "PRIVATE" | "PUBLIC";
-  } | null;
+  const cls = await getClassById(classId);
   if (!cls) {
     return NextResponse.json({ error: "Class not found" }, { status: 404 });
   }
 
-  const subs = (await Submission.find({ classId }).sort({ createdAt: -1 }).lean()) as unknown as {
-    _id: { toString(): string };
-    groupName: string;
-    title: string;
-    description?: string;
-    authorSfuIds?: string[];
-    authorNames?: string[];
-    youtubeVideoIds?: string[];
-    projectUrls?: string[];
-    visibility?: string;
-    commentsEnabled?: boolean;
-    createdAt: Date;
-  }[];
+  const subs = await listSubmissionsByClass(classId);
 
   const header = csvRow([
     "submission_id",
@@ -65,7 +46,7 @@ export async function GET(req: NextRequest) {
 
   const rows = subs.map((s) =>
     csvRow([
-      s._id.toString(),
+      s.id,
       s.groupName,
       s.title,
       s.description ?? "",

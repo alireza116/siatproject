@@ -1,15 +1,14 @@
-import type { Types } from "mongoose";
+/** Lean document shapes returned from Firestore reads (IDs are strings). */
 
-/** Narrow Mongoose `.lean()` results for submissions in server actions */
 export type LeanSubmission = {
-  _id: Types.ObjectId;
-  classId: Types.ObjectId;
+  _id: string;
+  classId: string;
   visibility?: "PRIVATE" | "PUBLIC";
   commentsEnabled?: boolean;
 };
 
 export type LeanClass = {
-  _id: Types.ObjectId;
+  _id: string;
   defaultVisibility: "PRIVATE" | "PUBLIC";
   commentsOnPublic: boolean;
 };
@@ -18,7 +17,7 @@ export type LeanClassFull = LeanClass & {
   title: string;
   description?: string;
   joinCode: string;
-  ownerId: Types.ObjectId;
+  ownerId: string;
 };
 
 export type LeanSubmissionFull = LeanSubmission & {
@@ -27,18 +26,18 @@ export type LeanSubmissionFull = LeanSubmission & {
   description?: string;
   projectUrls: string[];
   youtubeVideoIds: string[];
-  authorUserIds?: Types.ObjectId[];
+  authorUserIds?: string[];
   authorNames: string[];
   authorSfuIds: string[];
-  createdById: Types.ObjectId;
+  createdById: string;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type LeanEnrollment = {
-  _id: Types.ObjectId;
-  classId: Types.ObjectId;
-  userId: Types.ObjectId;
+  _id: string;
+  classId: string;
+  userId: string;
   role: string;
   createdAt?: Date;
   studentCanEditSubmissions?: boolean;
@@ -47,7 +46,7 @@ export type LeanEnrollment = {
 };
 
 export type LeanUser = {
-  _id: Types.ObjectId;
+  _id: string;
   sfuId?: string;
   name?: string;
   email?: string;
@@ -56,14 +55,14 @@ export type LeanUser = {
 };
 
 export type LeanComment = {
-  _id: Types.ObjectId;
-  userId: Types.ObjectId;
+  _id: string;
+  userId: string;
   body: string;
   createdAt?: Date;
 };
 
 export type LeanUserPublic = {
-  _id: Types.ObjectId;
+  _id: string;
   name?: string;
   sfuId?: string;
 };

@@ -219,7 +219,7 @@ export function CommentsBlock({
 
       {canComment && hasOwnComment && (
         <p className="mt-3 text-sm text-muted-foreground">
-          You already posted your one allowed comment for this submission.
+          You already posted your one comment for this submission. You can edit it below.
         </p>
       )}
 

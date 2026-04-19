@@ -1,12 +1,11 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { leanOne } from "@/lib/mongoose-lean";
 import type { LeanUser } from "@/lib/types/lean";
 import type { JWT } from "next-auth/jwt";
 
 const enableGoogle = process.env.ENABLE_GOOGLE === "true";
 
-/** Next.js middleware runs on Edge; Mongoose must not load there. */
+/** Next.js middleware runs on Edge; Firestore must not load there. */
 function isEdgeRuntime(): boolean {
   return process.env.NEXT_RUNTIME === "edge";
 }
@@ -15,17 +14,22 @@ async function loadUserIntoToken(token: JWT): Promise<JWT> {
   if (!token.sub || isEdgeRuntime()) {
     return token;
   }
-  const { dbConnect } = await import("@/lib/db/connect");
-  const { User } = await import("@/lib/models/User");
-  await dbConnect();
-  const raw = await User.findById(token.sub).lean();
-  const u = leanOne<LeanUser>(raw);
+  const { getUserById } = await import("@/lib/firestore/users");
+  const u = await getUserById(token.sub);
   if (!u) return token;
-  token.sfuId = u.sfuId ?? undefined;
-  token.role = u.role;
-  token.name = u.name ?? token.name;
-  token.email = u.email ?? token.email;
-  token.picture = u.image ?? token.picture;
+  const lean: LeanUser = {
+    _id: u.id,
+    sfuId: u.sfuId,
+    role: u.role,
+    name: u.name,
+    email: u.email,
+    image: u.image,
+  };
+  token.sfuId = lean.sfuId ?? undefined;
+  token.role = lean.role;
+  token.name = lean.name ?? token.name;
+  token.email = lean.email ?? token.email;
+  token.picture = lean.image ?? token.picture;
   return token;
 }
 
@@ -45,26 +49,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, account, profile }) {
       if (!isEdgeRuntime() && account?.provider === "google" && profile && "email" in profile) {
-        const { dbConnect } = await import("@/lib/db/connect");
-        const { User } = await import("@/lib/models/User");
-        await dbConnect();
+        const {
+          findUserByGoogleSub,
+          createUserGoogle,
+          updateUserGoogle,
+        } = await import("@/lib/firestore/users");
         const email = profile.email as string | undefined;
         const sub = account.providerAccountId;
-        let user = await User.findOne({ googleSub: sub });
-        if (!user) {
-          user = await User.create({
+        const existing = await findUserByGoogleSub(sub);
+        if (!existing) {
+          token.sub = await createUserGoogle({
             googleSub: sub,
             email: email ?? undefined,
             name: (profile.name as string) ?? undefined,
             image: (profile.picture as string) ?? undefined,
           });
         } else {
-          user.email = email ?? user.email;
-          user.name = (profile.name as string) ?? user.name;
-          user.image = (profile.picture as string) ?? user.image;
-          await user.save();
+          await updateUserGoogle(existing.id, {
+            email: email ?? undefined,
+            name: (profile.name as string) ?? undefined,
+            image: (profile.picture as string) ?? undefined,
+          });
+          token.sub = existing.id;
         }
-        token.sub = user._id.toString();
       }
 
       return loadUserIntoToken(token);

@@ -1,12 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
-import { ClassModel } from "@/lib/models/Class";
-import { Submission } from "@/lib/models/Submission";
-import { leanOne } from "@/lib/mongoose-lean";
-import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
+import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
+import { listSubmissionsByClass, toLeanSubmissionFull } from "@/lib/firestore/submissions";
 import { ClassSettingsForm } from "./class-settings-form";
 import { StudentPrivilegesSection } from "./student-privileges-section";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import { isSubmissionAuthor } from "@/lib/submission-access";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
+import type { LeanSubmissionFull } from "@/lib/types/lean";
 
 export default async function ClassPage({
   params,
@@ -34,11 +32,11 @@ export default async function ClassPage({
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
 
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) {
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) {
     notFound();
   }
+  const cls = toLeanClassFull(clsRaw);
 
   const allowed = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
     isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",
@@ -57,21 +55,19 @@ export default async function ClassPage({
     );
   }
 
-  // In preview mode, show the student perspective (no staff settings)
   const classManager =
     !viewAsUserId &&
     (await isClassAppManager(session.user.id, classId, {
       globalRole: session.user.role,
       viewAsActive: false,
     }));
-  const allSubmissions = (await Submission.find({ classId: cls._id })
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanSubmissionFull[];
+  const subsRaw = await listSubmissionsByClass(classId);
+  const allSubmissions: LeanSubmissionFull[] = subsRaw.map(toLeanSubmissionFull);
   const submissions = classManager
     ? allSubmissions
     : allSubmissions.filter((s) => isSubmissionAuthor(s, effectiveUserId));
   const ratings = await getRatingStatsBySubmissionIds(
-    submissions.map((s) => s._id.toString())
+    submissions.map((s) => s._id)
   );
 
   return (
@@ -154,7 +150,7 @@ export default async function ClassPage({
           ) : (
             <ul className="divide-y divide-border">
               {submissions.map((s) => (
-                <li key={s._id.toString()}>
+                <li key={s._id}>
                   <Link
                     href={`/classes/${classId}/submissions/${s._id}`}
                     className="flex items-center justify-between gap-4 px-4 py-4 transition-colors hover:bg-muted/50"
@@ -167,7 +163,7 @@ export default async function ClassPage({
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {(() => {
-                          const r = ratings.get(s._id.toString());
+                          const r = ratings.get(s._id);
                           if (!r || r.count === 0) return "Rating: not rated yet";
                           return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
                         })()}

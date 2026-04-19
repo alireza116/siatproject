@@ -1,9 +1,8 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import { isClassAppManager } from "@/lib/class-access";
-import { ClassModel } from "@/lib/models/Class";
+import { getClassById, updateClassSettings } from "@/lib/firestore/classes";
 import { revalidatePath } from "next/cache";
 
 export async function updateClassSettingsAction(formData: FormData) {
@@ -22,15 +21,17 @@ export async function updateClassSettingsAction(formData: FormData) {
   const defaultVisibility = String(formData.get("defaultVisibility") ?? "");
   const commentsOnPublic = formData.get("commentsOnPublic") === "true";
 
-  await dbConnect();
-  const cls = await ClassModel.findById(classId);
+  const cls = await getClassById(classId);
   if (!cls) return { ok: false as const, error: "Not found" };
 
+  let vis: "PRIVATE" | "PUBLIC" = cls.defaultVisibility;
   if (defaultVisibility === "PUBLIC" || defaultVisibility === "PRIVATE") {
-    cls.defaultVisibility = defaultVisibility;
+    vis = defaultVisibility;
   }
-  cls.commentsOnPublic = commentsOnPublic;
-  await cls.save();
+  await updateClassSettings(classId, {
+    defaultVisibility: vis,
+    commentsOnPublic,
+  });
 
   revalidatePath(`/classes/${classId}`);
   revalidatePath("/gallery");

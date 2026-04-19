@@ -6,6 +6,11 @@ import { SignInGoogle } from "@/components/SignInGoogle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 
+const SIGN_IN_ERROR_MESSAGES: Record<string, string> = {
+  firestore_not_ready:
+    "Firestore is not available for this Firebase project. In Firebase Console, open Firestore and create a database (any mode). Confirm your service account JSON matches that same project, then try again.",
+};
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -38,7 +43,9 @@ export default async function HomePage({
 
         {sp.error && (
           <Alert variant="destructive">
-            <AlertDescription>{decodeURIComponent(sp.error)}</AlertDescription>
+            <AlertDescription>
+              {SIGN_IN_ERROR_MESSAGES[sp.error] ?? decodeURIComponent(sp.error)}
+            </AlertDescription>
           </Alert>
         )}
 

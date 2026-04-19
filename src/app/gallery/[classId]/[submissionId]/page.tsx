@@ -2,17 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { deleteSubmissionAction } from "@/app/actions/submission";
-import { dbConnect } from "@/lib/db/connect";
-import { Comment } from "@/lib/models/Comment";
-import { User } from "@/lib/models/User";
-import { getPublicSubmission } from "@/lib/gallery";
+import { listCommentsForSubmission } from "@/lib/firestore/comments";
+import { listUsersByIds } from "@/lib/firestore/users";
+import { getPublicSubmission, listPublicSubmissionsForClass } from "@/lib/gallery";
 import type { LeanComment, LeanUserPublic } from "@/lib/types/lean";
 import { isClassInstructor } from "@/lib/class-access";
 import { effectiveCommentsOnPublic, effectiveVisibility } from "@/lib/visibility";
 import { CommentsBlock } from "@/components/CommentsBlock";
 import { DeleteSubmissionButton } from "@/components/DeleteSubmissionButton";
 import { ProjectNav } from "@/components/ProjectNav";
-import { listPublicSubmissionsForClass } from "@/lib/gallery";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -30,18 +28,19 @@ export default async function PublicSubmissionPage({
   const { submission: sub, class: cls } = data;
   const session = await auth();
 
-  await dbConnect();
-  const comments = (await Comment.find({ submissionId: sub._id })
-    .sort({ createdAt: 1 })
-    .lean()) as unknown as LeanComment[];
-  const hasOwnComment = !!session?.user?.id && comments.some((c) => c.userId.toString() === session.user.id);
-  const commentIds = comments.map((c) => c._id.toString());
+  const commentsRaw = await listCommentsForSubmission(submissionId);
+  const comments: LeanComment[] = commentsRaw.map((c) => ({
+    _id: c.id,
+    userId: c.userId,
+    body: c.body,
+    createdAt: c.createdAt,
+  }));
+  const hasOwnComment = !!session?.user?.id && comments.some((c) => c.userId === session.user.id);
+  const commentIds = comments.map((c) => c._id);
   const voteSummary = await getCommentVoteSummary(commentIds, session?.user?.id);
-  const userIds = [...new Set(comments.map((c) => c.userId.toString()))];
-  const users = (await User.find({ _id: { $in: userIds } })
-    .select("name sfuId")
-    .lean()) as unknown as LeanUserPublic[];
-  const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+  const userIds = [...new Set(comments.map((c) => c.userId))];
+  const users = await listUsersByIds(userIds);
+  const userMap = new Map(users.map((u) => [u.id, u]));
 
   const vis = effectiveVisibility(sub, cls);
   const commentsOk = effectiveCommentsOnPublic(sub, cls);
@@ -49,28 +48,30 @@ export default async function PublicSubmissionPage({
 
   let isInstructor = false;
   if (session?.user?.id) {
-    isInstructor = await isClassInstructor(session.user.id, cls._id.toString());
+    isInstructor = await isClassInstructor(session.user.id, cls._id);
   }
 
-  // Navigation: ordered list of public submissions in this class
   const allPublicSubs = await listPublicSubmissionsForClass(classId);
   const navIndex = allPublicSubs.findIndex((s) => s._id === submissionId);
-  const prevNavSub = navIndex > 0 ? allPublicSubs[navIndex - 1] : null;
-  const nextNavSub = navIndex < allPublicSubs.length - 1 ? allPublicSubs[navIndex + 1] : null;
+  const prevNavSub = navIndex > 0 ? allPublicSubs[navIndex - 1]! : null;
+  const nextNavSub = navIndex < allPublicSubs.length - 1 ? allPublicSubs[navIndex + 1]! : null;
 
-  const commentRows = comments.map((c) => ({
-    id: c._id.toString(),
-    body: c.body,
-    createdAt: c.createdAt?.toISOString() ?? "",
-    userId: c.userId.toString(),
-    upvotes: voteSummary.get(c._id.toString())?.upvotes ?? 0,
-    downvotes: voteSummary.get(c._id.toString())?.downvotes ?? 0,
-    userVote: voteSummary.get(c._id.toString())?.userVote ?? 0,
-    userLabel:
-      userMap.get(c.userId.toString())?.sfuId ??
-      userMap.get(c.userId.toString())?.name ??
-      "User",
-  }));
+  const commentRows = comments.map((c) => {
+    const u = userMap.get(c.userId);
+    const pub: LeanUserPublic | undefined = u
+      ? { _id: u.id, name: u.name, sfuId: u.sfuId }
+      : undefined;
+    return {
+      id: c._id,
+      body: c.body,
+      createdAt: c.createdAt?.toISOString() ?? "",
+      userId: c.userId,
+      upvotes: voteSummary.get(c._id)?.upvotes ?? 0,
+      downvotes: voteSummary.get(c._id)?.downvotes ?? 0,
+      userVote: voteSummary.get(c._id)?.userVote ?? 0,
+      userLabel: pub?.sfuId ?? pub?.name ?? "User",
+    };
+  });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
@@ -90,7 +91,6 @@ export default async function PublicSubmissionPage({
         />
       )}
 
-      {/* Title row */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sub.title}</h1>
@@ -109,10 +109,8 @@ export default async function PublicSubmissionPage({
         )}
       </div>
 
-      {/* Two-column layout: project content left, feedback right */}
       <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
 
-        {/* ── Left column: project content ── */}
         <div className="min-w-0">
           {sub.description && (
             <section>
@@ -163,7 +161,6 @@ export default async function PublicSubmissionPage({
           )}
         </div>
 
-        {/* ── Right column: feedback (sticky + scrollable) ── */}
         <aside className="lg:sticky lg:top-[4.5rem] lg:self-start">
           <div className="lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:rounded-xl lg:border lg:border-border lg:bg-card lg:px-5 lg:py-5">
             <CommentsBlock

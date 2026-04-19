@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbConnect } from "@/lib/db/connect";
 import { setAuthJwtCookie } from "@/lib/auth/cas-session";
 import { validateCasTicket } from "@/lib/cas/validate";
 import { getCasCallbackUrl, getRequestOrigin } from "@/lib/env";
-import { User } from "@/lib/models/User";
+import {
+  createUserCas,
+  findUserByCasUsername,
+  getUserById,
+  setUserRole,
+  updateUserSfuFromCas,
+} from "@/lib/firestore/users";
 import { isValidSfuId, normalizeSfuId } from "@/lib/sfu-id";
 import { isBootstrapAdmin } from "@/lib/admin";
 
@@ -24,42 +29,62 @@ export async function GET(req: NextRequest) {
   }
 
   const username = result.user.username.trim();
-  await dbConnect();
 
-  let user = await User.findOne({ casUsername: username });
-  let sfuId: string | undefined = user?.sfuId;
+  try {
+    let user = await findUserByCasUsername(username);
+    let sfuId: string | undefined = user?.sfuId;
 
-  if (!user) {
-    const initialSfu = isValidSfuId(username) ? normalizeSfuId(username) : undefined;
-    user = await User.create({
-      casUsername: username,
-      name: username,
-      sfuId: initialSfu,
+    if (!user) {
+      const initialSfu = isValidSfuId(username) ? normalizeSfuId(username) : undefined;
+      const id = await createUserCas({
+        casUsername: username,
+        name: username,
+        sfuId: initialSfu,
+      });
+      user = await getUserById(id);
+      if (!user) {
+        return NextResponse.redirect(casErrorUrl(req, "cas_user_create_failed"));
+      }
+      sfuId = user.sfuId ?? undefined;
+    } else if (!sfuId && isValidSfuId(username)) {
+      const normalized = normalizeSfuId(username);
+      await updateUserSfuFromCas(user.id, normalized);
+      sfuId = normalized;
+    }
+
+    // Auto-promote bootstrap admins to GLOBAL_ADMIN on every login.
+    if (user && isBootstrapAdmin(username) && user.role !== "GLOBAL_ADMIN") {
+      await setUserRole(user.id, "GLOBAL_ADMIN");
+      user = { ...user, role: "GLOBAL_ADMIN" };
+    }
+
+    await setAuthJwtCookie({
+      sub: user.id,
+      name: user.name,
+      email: user.email,
+      picture: user.image,
+      sfuId: sfuId ?? null,
+      role: user.role,
     });
-    sfuId = user.sfuId ?? undefined;
-  } else if (!sfuId && isValidSfuId(username)) {
-    user.sfuId = normalizeSfuId(username);
-    await user.save();
-    sfuId = user.sfuId ?? undefined;
+
+    const dest = user.sfuId ? "/dashboard" : "/onboarding/sfu-id";
+    return NextResponse.redirect(new URL(dest, getRequestOrigin(req)));
+  } catch (err: unknown) {
+    if (isFirestoreNotProvisionedError(err)) {
+      return NextResponse.redirect(casErrorUrl(req, "firestore_not_ready"));
+    }
+    console.error("CAS auth error:", err);
+    return NextResponse.redirect(casErrorUrl(req, "auth_error"));
   }
+}
 
-  // Auto-promote bootstrap admins to GLOBAL_ADMIN on every login.
-  if (isBootstrapAdmin(username) && user.role !== "GLOBAL_ADMIN") {
-    user.role = "GLOBAL_ADMIN";
-    await user.save();
-  }
-
-  await setAuthJwtCookie({
-    sub: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    picture: user.image,
-    sfuId: sfuId ?? null,
-    role: user.role,
-  });
-
-  const dest = user.sfuId ? "/dashboard" : "/onboarding/sfu-id";
-  return NextResponse.redirect(new URL(dest, getRequestOrigin(req)));
+function isFirestoreNotProvisionedError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: number | string; message?: string };
+  // gRPC NOT_FOUND (5): default Firestore database missing or wrong project / API.
+  if (e.code === 5 || e.code === "NOT_FOUND") return true;
+  if (typeof e.message === "string" && e.message.includes("NOT_FOUND")) return true;
+  return false;
 }
 
 function casErrorUrl(req: NextRequest, message: string): URL {

@@ -2,10 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canAccessClassOrGlobalAdmin, getStudentSubmissionPrivileges, isClassAppManager } from "@/lib/class-access";
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { leanOne } from "@/lib/mongoose-lean";
-import type { LeanClassFull } from "@/lib/types/lean";
+import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
 import { SubmissionForm } from "@/components/SubmissionForm";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,9 +21,9 @@ export default async function NewSubmissionPage({
   const viewAsUserId = await getViewAsUserId(session.user.role);
   const effectiveUserId = viewAsUserId ?? session.user.id;
 
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) notFound();
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) notFound();
+  const cls = toLeanClassFull(clsRaw);
 
   const allowed = await canAccessClassOrGlobalAdmin(effectiveUserId, classId, {
     isGlobalAdmin: !viewAsUserId && session.user.role === "GLOBAL_ADMIN",

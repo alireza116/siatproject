@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCasCallbackUrl } from "@/lib/env";
 
 const CAS_LOGIN = "https://cas.sfu.ca/cas/login";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   if (process.env.ENABLE_CAS !== "true") {
     return NextResponse.json({ error: "CAS is disabled" }, { status: 400 });
   }

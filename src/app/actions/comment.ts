@@ -1,17 +1,39 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
 import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
-import { ClassModel } from "@/lib/models/Class";
-import { Comment } from "@/lib/models/Comment";
-import { CommentVote } from "@/lib/models/CommentVote";
-import { Submission } from "@/lib/models/Submission";
-import { SubmissionRating } from "@/lib/models/SubmissionRating";
+import { getClassById } from "@/lib/firestore/classes";
+import {
+  createComment,
+  deleteComment,
+  deleteCommentVotesForComment,
+  findCommentBySubmissionAndUser,
+  getCommentById,
+  setCommentVote,
+  setSubmissionRating,
+  updateCommentBody,
+} from "@/lib/firestore/comments";
+import { getSubmissionById } from "@/lib/firestore/submissions";
 import { effectiveCommentsOnPublic, effectiveVisibility } from "@/lib/visibility";
 import type { LeanClass, LeanSubmission } from "@/lib/types/lean";
 import { revalidatePath } from "next/cache";
-import { leanOne } from "@/lib/mongoose-lean";
+
+function toLeanSub(s: import("@/lib/firestore/submissions").SubmissionRecord): LeanSubmission {
+  return {
+    _id: s.id,
+    classId: s.classId,
+    visibility: s.visibility,
+    commentsEnabled: s.commentsEnabled,
+  };
+}
+
+function toLeanCls(c: import("@/lib/firestore/classes").ClassRecord): LeanClass {
+  return {
+    _id: c.id,
+    defaultVisibility: c.defaultVisibility,
+    commentsOnPublic: c.commentsOnPublic,
+  };
+}
 
 export async function addCommentAction(formData: FormData) {
   const session = await auth();
@@ -24,20 +46,19 @@ export async function addCommentAction(formData: FormData) {
     return { ok: false as const, error: "Invalid comment" };
   }
 
-  await dbConnect();
-  const rawSub = await Submission.findById(submissionId).lean();
-  if (!rawSub || Array.isArray(rawSub)) {
+  const subRaw = await getSubmissionById(submissionId);
+  if (!subRaw) {
     return { ok: false as const, error: "Not found" };
   }
-  const sub = rawSub as unknown as LeanSubmission;
-  const rawCls = await ClassModel.findById(sub.classId).lean();
-  if (!rawCls || Array.isArray(rawCls)) {
+  const sub = toLeanSub(subRaw);
+  const clsRaw = await getClassById(sub.classId);
+  if (!clsRaw) {
     return { ok: false as const, error: "Class missing" };
   }
-  const cls = rawCls as unknown as LeanClass;
+  const cls = toLeanCls(clsRaw);
 
   const vis = effectiveVisibility(sub, cls);
-  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId.toString(), {
+  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId, {
     isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
   });
 
@@ -52,13 +73,13 @@ export async function addCommentAction(formData: FormData) {
     }
   }
 
-  const existing = await Comment.findOne({ submissionId, userId: session.user.id }).lean();
+  const existing = await findCommentBySubmissionAndUser(submissionId, session.user.id);
   if (existing) {
     return { ok: false as const, error: "You can only post one comment per submission." };
   }
 
   try {
-    await Comment.create({
+    await createComment({
       submissionId,
       userId: session.user.id,
       body,
@@ -67,8 +88,8 @@ export async function addCommentAction(formData: FormData) {
     return { ok: false as const, error: "Failed to post comment. Please try again." };
   }
 
-  revalidatePath(`/gallery/${sub.classId.toString()}/${submissionId}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/submissions/${submissionId}`);
+  revalidatePath(`/gallery/${sub.classId}/${submissionId}`);
+  revalidatePath(`/classes/${sub.classId}/submissions/${submissionId}`);
   return { ok: true as const };
 }
 
@@ -77,28 +98,27 @@ export async function deleteCommentAction(commentId: string) {
   if (!session?.user?.id) {
     return { ok: false as const, error: "Not allowed" };
   }
-  await dbConnect();
-  const c = await Comment.findById(commentId);
+  const c = await getCommentById(commentId);
   if (!c) return { ok: false as const, error: "Not found" };
-  const rawSub = await Submission.findById(c.submissionId).lean();
-  if (!rawSub || Array.isArray(rawSub)) {
+  const subRaw = await getSubmissionById(c.submissionId);
+  if (!subRaw) {
     return { ok: false as const, error: "Not found" };
   }
-  const sub = rawSub as unknown as LeanSubmission;
+  const sub = toLeanSub(subRaw);
 
-  const canManage = await isClassAppManager(session.user.id, sub.classId.toString(), {
+  const canManage = await isClassAppManager(session.user.id, sub.classId, {
     globalRole: session.user.role,
     viewAsActive: false,
   });
-  const own = c.userId.toString() === session.user.id;
+  const own = c.userId === session.user.id;
   if (!canManage && !own) {
     return { ok: false as const, error: "Not allowed" };
   }
 
-  await CommentVote.deleteMany({ commentId });
-  await Comment.deleteOne({ _id: commentId });
-  revalidatePath(`/gallery/${sub.classId.toString()}/${sub._id.toString()}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/submissions/${sub._id.toString()}`);
+  await deleteCommentVotesForComment(commentId);
+  await deleteComment(commentId);
+  revalidatePath(`/gallery/${sub.classId}/${c.submissionId}`);
+  revalidatePath(`/classes/${sub.classId}/submissions/${c.submissionId}`);
   return { ok: true as const };
 }
 
@@ -112,23 +132,22 @@ export async function updateCommentAction(commentId: string, body: string) {
     return { ok: false as const, error: "Invalid comment" };
   }
 
-  await dbConnect();
-  const c = await Comment.findById(commentId);
+  const c = await getCommentById(commentId);
   if (!c) return { ok: false as const, error: "Not found" };
-  if (c.userId.toString() !== session.user.id) {
+  if (c.userId !== session.user.id) {
     return { ok: false as const, error: "You can only edit your own comment." };
   }
 
-  c.body = next;
-  await c.save();
+  await updateCommentBody(commentId, next);
 
-  const rawSub = await Submission.findById(c.submissionId).lean();
-  if (!rawSub || Array.isArray(rawSub)) {
+  const subRaw = await getSubmissionById(c.submissionId);
+  if (!subRaw) {
     return { ok: true as const };
   }
-  const sub = rawSub as unknown as LeanSubmission;
-  revalidatePath(`/gallery/${sub.classId.toString()}/${sub._id.toString()}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/submissions/${sub._id.toString()}`);
+  const sub = toLeanSub(subRaw);
+  revalidatePath(`/gallery/${sub.classId}/${c.submissionId}`);
+  revalidatePath(`/classes/${sub.classId}/submissions/${c.submissionId}`);
+  revalidatePath(`/classes/${sub.classId}`);
   return { ok: true as const };
 }
 
@@ -137,23 +156,21 @@ export async function setCommentVoteAction(commentId: string, value: -1 | 0 | 1)
   if (!session?.user?.id) return { ok: false as const, error: "Sign in to vote" };
   if (![1, 0, -1].includes(value)) return { ok: false as const, error: "Invalid vote" };
 
-  await dbConnect();
-  const cRaw = await Comment.findById(commentId).lean();
-  const c = leanOne<{ userId: { toString(): string }; submissionId: { toString(): string } }>(cRaw);
+  const c = await getCommentById(commentId);
   if (!c) return { ok: false as const, error: "Comment not found" };
-  if (c.userId.toString() === session.user.id) {
+  if (c.userId === session.user.id) {
     return { ok: false as const, error: "You cannot vote on your own comment." };
   }
 
-  const rawSub = await Submission.findById(c.submissionId.toString()).lean();
-  if (!rawSub || Array.isArray(rawSub)) return { ok: false as const, error: "Submission not found" };
-  const sub = rawSub as unknown as LeanSubmission;
-  const rawCls = await ClassModel.findById(sub.classId).lean();
-  if (!rawCls || Array.isArray(rawCls)) return { ok: false as const, error: "Class missing" };
-  const cls = rawCls as unknown as LeanClass;
+  const subRaw = await getSubmissionById(c.submissionId);
+  if (!subRaw) return { ok: false as const, error: "Submission not found" };
+  const sub = toLeanSub(subRaw);
+  const clsRaw = await getClassById(sub.classId);
+  if (!clsRaw) return { ok: false as const, error: "Class missing" };
+  const cls = toLeanCls(clsRaw);
 
   const vis = effectiveVisibility(sub, cls);
-  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId.toString(), {
+  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId, {
     isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
   });
   if (vis === "PRIVATE" && !enrolled) return { ok: false as const, error: "Not allowed" };
@@ -161,18 +178,10 @@ export async function setCommentVoteAction(commentId: string, value: -1 | 0 | 1)
     return { ok: false as const, error: "Voting is disabled for this public project." };
   }
 
-  if (value === 0) {
-    await CommentVote.deleteOne({ commentId, userId: session.user.id });
-  } else {
-    await CommentVote.updateOne(
-      { commentId, userId: session.user.id },
-      { $set: { value } },
-      { upsert: true }
-    );
-  }
+  await setCommentVote(commentId, session.user.id, value === 0 ? null : value);
 
-  revalidatePath(`/gallery/${sub.classId.toString()}/${sub._id.toString()}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/submissions/${sub._id.toString()}`);
+  revalidatePath(`/gallery/${sub.classId}/${c.submissionId}`);
+  revalidatePath(`/classes/${sub.classId}/submissions/${c.submissionId}`);
   return { ok: true as const };
 }
 
@@ -181,35 +190,26 @@ export async function setSubmissionRatingAction(submissionId: string, stars: 0 |
   if (!session?.user?.id) return { ok: false as const, error: "Sign in to rate" };
   if (![0, 1, 2, 3, 4, 5].includes(stars)) return { ok: false as const, error: "Invalid rating" };
 
-  await dbConnect();
-  const rawSub = await Submission.findById(submissionId).lean();
-  if (!rawSub || Array.isArray(rawSub)) return { ok: false as const, error: "Submission not found" };
-  const sub = rawSub as unknown as LeanSubmission;
-  const rawCls = await ClassModel.findById(sub.classId).lean();
-  if (!rawCls || Array.isArray(rawCls)) return { ok: false as const, error: "Class missing" };
-  const cls = rawCls as unknown as LeanClass;
+  const subRaw = await getSubmissionById(submissionId);
+  if (!subRaw) return { ok: false as const, error: "Submission not found" };
+  const sub = toLeanSub(subRaw);
+  const clsRaw = await getClassById(sub.classId);
+  if (!clsRaw) return { ok: false as const, error: "Class missing" };
+  const cls = toLeanCls(clsRaw);
 
   const vis = effectiveVisibility(sub, cls);
-  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId.toString(), {
+  const enrolled = await canAccessClassOrGlobalAdmin(session.user.id, sub.classId, {
     isGlobalAdmin: session.user.role === "GLOBAL_ADMIN",
   });
   if (vis === "PRIVATE" && !enrolled) return { ok: false as const, error: "Not allowed" };
 
-  if (stars === 0) {
-    await SubmissionRating.deleteOne({ submissionId, userId: session.user.id });
-  } else {
-    await SubmissionRating.updateOne(
-      { submissionId, userId: session.user.id },
-      { $set: { stars } },
-      { upsert: true }
-    );
-  }
+  await setSubmissionRating(submissionId, session.user.id, stars === 0 ? null : stars);
 
-  revalidatePath(`/gallery/${sub.classId.toString()}/${submissionId}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/submissions/${submissionId}`);
-  revalidatePath(`/classes/${sub.classId.toString()}`);
-  revalidatePath(`/classes/${sub.classId.toString()}/projects`);
-  revalidatePath(`/gallery/${sub.classId.toString()}`);
+  revalidatePath(`/gallery/${sub.classId}/${submissionId}`);
+  revalidatePath(`/classes/${sub.classId}/submissions/${submissionId}`);
+  revalidatePath(`/classes/${sub.classId}`);
+  revalidatePath(`/classes/${sub.classId}/projects`);
+  revalidatePath(`/gallery/${sub.classId}`);
   revalidatePath("/my-submissions");
   return { ok: true as const };
 }

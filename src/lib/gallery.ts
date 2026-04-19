@@ -1,10 +1,12 @@
-import { dbConnect } from "@/lib/db/connect";
-import { ClassModel } from "@/lib/models/Class";
-import { Submission } from "@/lib/models/Submission";
+import { getClassById, listAllClasses } from "@/lib/firestore/classes";
+import {
+  getSubmissionById,
+  listAllSubmissions,
+  listSubmissionsByClass,
+  type SubmissionRecord,
+} from "@/lib/firestore/submissions";
 import { effectiveVisibility } from "@/lib/visibility";
-import { leanOne } from "@/lib/mongoose-lean";
 import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
-import type { Types } from "mongoose";
 
 export type PublicSubmissionListItem = {
   _id: string;
@@ -22,71 +24,88 @@ export type PublicClassListItem = {
   publicCount: number;
 };
 
+function toLeanFull(s: SubmissionRecord): LeanSubmissionFull {
+  return {
+    _id: s.id,
+    classId: s.classId,
+    visibility: s.visibility,
+    commentsEnabled: s.commentsEnabled,
+    title: s.title,
+    groupName: s.groupName,
+    description: s.description,
+    projectUrls: s.projectUrls,
+    youtubeVideoIds: s.youtubeVideoIds,
+    authorUserIds: s.authorUserIds,
+    authorNames: s.authorNames,
+    authorSfuIds: s.authorSfuIds,
+    createdById: s.createdById,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}
+
+function toLeanClass(c: import("@/lib/firestore/classes").ClassRecord): LeanClassFull {
+  return {
+    _id: c.id,
+    title: c.title,
+    joinCode: c.joinCode,
+    description: c.description,
+    ownerId: c.ownerId,
+    defaultVisibility: c.defaultVisibility,
+    commentsOnPublic: c.commentsOnPublic,
+  };
+}
+
+function submissionIsPublic(s: LeanSubmissionFull, cls: LeanClassFull): boolean {
+  return effectiveVisibility(s, cls) === "PUBLIC";
+}
+
 /** List all classes that have at least one publicly visible submission. */
 export async function listClassesWithPublicSubmissions(): Promise<PublicClassListItem[]> {
-  await dbConnect();
+  const [allSubs, allClasses] = await Promise.all([listAllSubmissions(), listAllClasses()]);
+  const classMap = new Map(allClasses.map((c) => [c.id, toLeanClass(c)]));
+  const byClassPublic = new Map<string, { count: number; title: string; description?: string }>();
 
-  // Use aggregation to avoid loading all submissions into memory.
-  // A submission is public if its own visibility is PUBLIC, or if it has no
-  // visibility override and the class default is PUBLIC.
-  const results = (await Submission.aggregate([
-    {
-      $lookup: {
-        from: "classes",
-        localField: "classId",
-        foreignField: "_id",
-        as: "cls",
-      },
-    },
-    { $unwind: "$cls" },
-    {
-      $match: {
-        $or: [
-          { visibility: "PUBLIC" },
-          {
-            $and: [
-              { $or: [{ visibility: { $exists: false } }, { visibility: null }] },
-              { "cls.defaultVisibility": "PUBLIC" },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      $group: {
-        _id: "$classId",
-        publicCount: { $sum: 1 },
-        classTitle: { $first: "$cls.title" },
-        classDescription: { $first: "$cls.description" },
-      },
-    },
-    { $sort: { classTitle: 1 } },
-  ])) as { _id: Types.ObjectId; publicCount: number; classTitle: string; classDescription?: string }[];
+  for (const s of allSubs) {
+    const cls = classMap.get(s.classId);
+    if (!cls) continue;
+    if (!submissionIsPublic(toLeanFull(s), cls)) continue;
+    const cur = byClassPublic.get(s.classId);
+    if (cur) {
+      cur.count += 1;
+    } else {
+      byClassPublic.set(s.classId, {
+        count: 1,
+        title: cls.title,
+        description: cls.description,
+      });
+    }
+  }
 
-  return results.map((r) => ({
-    _id: r._id.toString(),
-    title: r.classTitle,
-    description: r.classDescription,
-    publicCount: r.publicCount,
-  }));
+  return [...byClassPublic.entries()]
+    .map(([classId, v]) => ({
+      _id: classId,
+      title: v.title,
+      description: v.description,
+      publicCount: v.count,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /** List all publicly visible submissions for a single class. */
 export async function listPublicSubmissionsForClass(
   classId: string
 ): Promise<PublicSubmissionListItem[]> {
-  await dbConnect();
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) return [];
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) return [];
+  const cls = toLeanClass(clsRaw);
 
-  const subs = (await Submission.find({ classId })
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanSubmissionFull[];
-
+  const subs = await listSubmissionsByClass(classId);
   return subs
-    .filter((s) => effectiveVisibility(s, cls) === "PUBLIC")
+    .map((s) => toLeanFull(s))
+    .filter((s) => submissionIsPublic(s, cls))
     .map((s) => ({
-      _id: s._id.toString(),
+      _id: s._id,
       title: s.title,
       groupName: s.groupName,
       classTitle: cls.title,
@@ -100,12 +119,12 @@ export async function getPublicSubmission(
   classId: string,
   submissionId: string
 ): Promise<{ submission: LeanSubmissionFull; class: LeanClassFull } | null> {
-  await dbConnect();
-  const s = leanOne<LeanSubmissionFull>(await Submission.findById(submissionId).lean());
-  if (!s) return null;
-  if (s.classId.toString() !== classId) return null;
-  const cls = leanOne<LeanClassFull>(await ClassModel.findById(classId).lean());
-  if (!cls) return null;
+  const sRaw = await getSubmissionById(submissionId);
+  if (!sRaw || sRaw.classId !== classId) return null;
+  const clsRaw = await getClassById(classId);
+  if (!clsRaw) return null;
+  const s = toLeanFull(sRaw);
+  const cls = toLeanClass(clsRaw);
   if (effectiveVisibility(s, cls) !== "PUBLIC") return null;
   return { submission: s, class: cls };
 }

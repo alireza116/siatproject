@@ -1,43 +1,49 @@
 "use server";
 
 import { auth } from "@/auth";
-import { dbConnect } from "@/lib/db/connect";
-import { User } from "@/lib/models/User";
-import { ClassModel } from "@/lib/models/Class";
-import { Enrollment } from "@/lib/models/Enrollment";
-import { Submission } from "@/lib/models/Submission";
-import { Comment } from "@/lib/models/Comment";
-import { CommentVote } from "@/lib/models/CommentVote";
-import { SubmissionRating } from "@/lib/models/SubmissionRating";
+import { createClass, deleteClass, findClassByJoinCode } from "@/lib/firestore/classes";
+import {
+  createComment,
+  deleteAllCommentsForSubmission,
+  deleteCommentVotesForCommentIds,
+  deleteSubmissionRatingsForSubmissions,
+  listCommentIdsForSubmission,
+} from "@/lib/firestore/comments";
+import {
+  createInstructorEnrollment,
+  deleteEnrollmentsForClass,
+  ensureStudentEnrollment,
+} from "@/lib/firestore/enrollments";
+import {
+  createSubmission,
+  deleteSubmissionsForClass,
+  listSubmissionIdsForClass,
+} from "@/lib/firestore/submissions";
+import { createUserDemo, findUserBySfuId } from "@/lib/firestore/users";
 import { revalidatePath } from "next/cache";
 
 const DEMO_CLASS_JOIN_CODE = "DEMOCLASS";
-
-// ---------------------------------------------------------------------------
-// Static demo content
-// ---------------------------------------------------------------------------
 
 const DEMO_STUDENTS = [
   { sfuId: "asmith01", casUsername: "asmith01", name: "Alex Smith" },
   { sfuId: "bjones02", casUsername: "bjones02", name: "Bella Jones" },
   { sfuId: "cpatel03", casUsername: "cpatel03", name: "Chandra Patel" },
-  { sfuId: "dkim04",   casUsername: "dkim04",   name: "David Kim"    },
-  { sfuId: "elin05",   casUsername: "elin05",   name: "Elena Lin"    },
+  { sfuId: "dkim04", casUsername: "dkim04", name: "David Kim" },
+  { sfuId: "elin05", casUsername: "elin05", name: "Elena Lin" },
 ];
 
-// Real public YouTube video IDs that embed reliably
 const VIDEOS = {
-  zoo:      "jNQXAC9IVRw", // "Me at the zoo" – first ever YouTube video
-  gangnam:  "9bZkp7q19f0", // PSY – Gangnam Style
-  rick:     "dQw4w9WgXcQ", // Rick Astley – Never Gonna Give You Up
-  despacito:"kJQP7kiw5Fk", // Luis Fonsi – Despacito
+  zoo: "jNQXAC9IVRw",
+  gangnam: "9bZkp7q19f0",
+  rick: "dQw4w9WgXcQ",
+  despacito: "kJQP7kiw5Fk",
 };
 
 interface DemoSubmission {
   title: string;
   groupName: string;
   description: string;
-  authorIndexes: number[];   // indexes into DEMO_STUDENTS
+  authorIndexes: number[];
   youtubeVideoIds: string[];
   projectUrls: string[];
   visibility: "PRIVATE" | "PUBLIC";
@@ -48,7 +54,7 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
     title: "Real-Time Chat Application",
     groupName: "Socket Squad",
     description:
-      "A full-stack chat app built with Next.js and Socket.IO. Supports multiple rooms, emoji reactions, and live typing indicators. Messages are persisted in MongoDB with a Redis pub/sub layer for horizontal scalability. Deployed on Vercel with a Fly.io Socket.IO server.",
+      "A full-stack chat app built with Next.js and Socket.IO. Supports multiple rooms, emoji reactions, and live typing indicators.",
     authorIndexes: [0, 1],
     youtubeVideoIds: [VIDEOS.zoo],
     projectUrls: ["https://github.com/example/realtime-chat"],
@@ -58,20 +64,16 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
     title: "ML Image Classifier",
     groupName: "Neural Nets",
     description:
-      "A convolutional neural network trained on a custom dataset of 12,000 images across 10 categories. Achieved 94.2% top-1 accuracy after applying data augmentation and transfer learning from ResNet-50. The web interface lets users upload images and receive predictions with confidence scores in real time.",
+      "A convolutional neural network trained on a custom dataset of 12,000 images across 10 categories.",
     authorIndexes: [2, 3],
     youtubeVideoIds: [VIDEOS.gangnam],
-    projectUrls: [
-      "https://github.com/example/ml-classifier",
-      "https://example.com/demo",
-    ],
+    projectUrls: ["https://github.com/example/ml-classifier", "https://example.com/demo"],
     visibility: "PRIVATE",
   },
   {
     title: "Budget Tracker PWA",
     groupName: "FinTech Five",
-    description:
-      "A progressive web app for personal finance tracking with offline-first support via a service worker and IndexedDB. Features include recurring transaction templates, multi-currency support, and exportable CSV reports. Syncs to the cloud when a connection is available using a background sync strategy.",
+    description: "A progressive web app for personal finance tracking with offline-first support.",
     authorIndexes: [4, 0],
     youtubeVideoIds: [VIDEOS.rick],
     projectUrls: ["https://github.com/example/budget-pwa"],
@@ -80,8 +82,7 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
   {
     title: "WebGL Planet Renderer",
     groupName: "Cosmic Coders",
-    description:
-      "A real-time 3D planet renderer running entirely in the browser with WebGL 2.0. Implements atmospheric scattering using the Rayleigh and Mie scattering models, procedural cloud layers via 3D Perlin noise, and a dynamic day/night terminator. Runs at 60 fps on mid-range hardware.",
+    description: "A real-time 3D planet renderer running entirely in the browser with WebGL 2.0.",
     authorIndexes: [1, 2],
     youtubeVideoIds: [VIDEOS.despacito],
     projectUrls: ["https://github.com/example/webgl-planet"],
@@ -90,21 +91,16 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
   {
     title: "AR Campus Navigation",
     groupName: "SFU AR",
-    description:
-      "An augmented reality wayfinding app for SFU Burnaby using ARKit and Apple Maps data. Point your phone at any building and see real-time walking directions overlaid on the camera feed. Indoor floor plans are sourced from the SFU Open Data portal and rendered as AR overlays when within 20 m of an entrance.",
+    description: "An augmented reality wayfinding app for SFU Burnaby using ARKit and Apple Maps data.",
     authorIndexes: [3, 4],
     youtubeVideoIds: [VIDEOS.zoo, VIDEOS.gangnam],
-    projectUrls: [
-      "https://github.com/example/ar-campus",
-      "https://example-ar.vercel.app",
-    ],
+    projectUrls: ["https://github.com/example/ar-campus", "https://example-ar.vercel.app"],
     visibility: "PUBLIC",
   },
   {
     title: "Multiplayer Chess Engine",
     groupName: "Game Devs",
-    description:
-      "A browser-based multiplayer chess game with a custom engine capable of searching to depth 8 using minimax with alpha-beta pruning and a transposition table. Matchmaking is handled over WebSockets with a Node.js server. Includes spectator mode, move history export to PGN, and an ELO rating system.",
+    description: "A browser-based multiplayer chess game with a custom engine.",
     authorIndexes: [0, 1, 2],
     youtubeVideoIds: [VIDEOS.rick],
     projectUrls: ["https://github.com/example/chess-engine"],
@@ -112,46 +108,35 @@ const DEMO_SUBMISSIONS: DemoSubmission[] = [
   },
 ];
 
-// Comments per submission (authorIndex → body)
 const DEMO_COMMENTS: Array<Array<{ authorIndex: number; body: string }>> = [
-  // submission 0 – Real-Time Chat
   [
     { authorIndex: 2, body: "Really smooth UI! Did you handle reconnection when the WebSocket drops?" },
     { authorIndex: 3, body: "Love the emoji reactions. Would be great to see typing indicators too." },
     { authorIndex: 4, body: "The latency in your demo is impressively low. What's your backend stack?" },
   ],
-  // submission 1 – ML Classifier
   [
     { authorIndex: 0, body: "Great accuracy results! How did you handle class imbalance in the dataset?" },
     { authorIndex: 4, body: "The confusion matrix visualization is super clear. Nice work on the UI." },
   ],
-  // submission 2 – Budget Tracker
   [
     { authorIndex: 1, body: "This is exactly what I've been looking for. Does it sync across devices?" },
     { authorIndex: 3, body: "The charts look polished. Did you use Chart.js or D3?" },
-    { authorIndex: 2, body: "The offline support is a great touch for a PWA. How large is the service worker bundle?" },
+    { authorIndex: 2, body: "The offline support is a great touch for a PWA." },
   ],
-  // submission 3 – WebGL Planet
   [
-    { authorIndex: 4, body: "The atmospheric scattering looks stunning! Did you implement it from scratch or use a shader library?" },
-    { authorIndex: 0, body: "Really impressive performance at 60fps. Did you use instanced rendering for the star field?" },
+    { authorIndex: 4, body: "The atmospheric scattering looks stunning!" },
+    { authorIndex: 0, body: "Really impressive performance at 60fps." },
   ],
-  // submission 4 – AR Campus
   [
-    { authorIndex: 1, body: "Tested it on campus today and it worked perfectly. The waypoint arrows are intuitive." },
+    { authorIndex: 1, body: "Tested it on campus today and it worked perfectly." },
     { authorIndex: 2, body: "Would love to see indoor navigation support in a future version!" },
-    { authorIndex: 0, body: "How are you getting the building floor plans? Are they from the SFU open data portal?" },
+    { authorIndex: 0, body: "How are you getting the building floor plans?" },
   ],
-  // submission 5 – Chess Engine
   [
-    { authorIndex: 3, body: "The minimax with alpha-beta pruning is fast! What depth are you searching to?" },
-    { authorIndex: 4, body: "Really clean multiplayer matchmaking. Did you use WebSockets or WebRTC?" },
+    { authorIndex: 3, body: "The minimax with alpha-beta pruning is fast!" },
+    { authorIndex: 4, body: "Really clean multiplayer matchmaking." },
   ],
 ];
-
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
 
 export async function seedDemoDataAction(): Promise<
   { ok: true; message: string } | { ok: false; error: string }
@@ -161,10 +146,7 @@ export async function seedDemoDataAction(): Promise<
     return { ok: false, error: "Not allowed" };
   }
 
-  await dbConnect();
-
-  // Check if demo class already exists
-  const existing = await ClassModel.findOne({ joinCode: DEMO_CLASS_JOIN_CODE });
+  const existing = await findClassByJoinCode(DEMO_CLASS_JOIN_CODE);
   if (existing) {
     return {
       ok: false,
@@ -172,17 +154,18 @@ export async function seedDemoDataAction(): Promise<
     };
   }
 
-  // 1. Upsert demo students
-  const studentDocs = await Promise.all(
-    DEMO_STUDENTS.map(async (s) => {
-      const existing = await User.findOne({ sfuId: s.sfuId });
-      if (existing) return existing;
-      return User.create({ sfuId: s.sfuId, casUsername: s.casUsername, name: s.name });
-    })
-  );
+  const studentIds: string[] = [];
+  for (const s of DEMO_STUDENTS) {
+    const u = await findUserBySfuId(s.sfuId);
+    if (!u) {
+      const id = await createUserDemo({ sfuId: s.sfuId, casUsername: s.casUsername, name: s.name });
+      studentIds.push(id);
+    } else {
+      studentIds.push(u.id);
+    }
+  }
 
-  // 2. Create the demo class owned by the current admin
-  const demoClass = await ClassModel.create({
+  const demoClassId = await createClass({
     title: "CMPT 272 – Web Development Demo",
     description: "A demo class pre-populated with sample submissions and comments for testing.",
     joinCode: DEMO_CLASS_JOIN_CODE,
@@ -191,47 +174,35 @@ export async function seedDemoDataAction(): Promise<
     commentsOnPublic: true,
   });
 
-  // 3. Enroll admin as instructor
-  await Enrollment.create({
-    classId: demoClass._id,
-    userId: session.user.id,
-    role: "INSTRUCTOR",
-  });
+  await createInstructorEnrollment(demoClassId, session.user.id);
+  await Promise.all(studentIds.map((userId) => ensureStudentEnrollment(demoClassId, userId)));
 
-  // 4. Enroll all demo students
-  await Promise.all(
-    studentDocs.map((s) =>
-      Enrollment.create({ classId: demoClass._id, userId: s._id, role: "STUDENT" })
-    )
-  );
+  const submissionIds: string[] = [];
+  for (const def of DEMO_SUBMISSIONS) {
+    const authors = def.authorIndexes.map((i) => studentIds[i]!);
+    const authorMeta = def.authorIndexes.map((i) => DEMO_STUDENTS[i]!);
+    const sid = await createSubmission({
+      classId: demoClassId,
+      title: def.title,
+      groupName: def.groupName,
+      description: def.description,
+      youtubeVideoIds: def.youtubeVideoIds,
+      projectUrls: def.projectUrls,
+      visibility: def.visibility,
+      authorUserIds: authors,
+      authorNames: authorMeta.map((a) => a.name),
+      authorSfuIds: authorMeta.map((a) => a.sfuId),
+      createdById: authors[0]!,
+    });
+    submissionIds.push(sid);
+  }
 
-  // 5. Create submissions
-  const submissionDocs = await Promise.all(
-    DEMO_SUBMISSIONS.map(async (def) => {
-      const authors = def.authorIndexes.map((i) => studentDocs[i]);
-      return Submission.create({
-        classId: demoClass._id,
-        title: def.title,
-        groupName: def.groupName,
-        description: def.description,
-        youtubeVideoIds: def.youtubeVideoIds,
-        projectUrls: def.projectUrls,
-        visibility: def.visibility,
-        authorUserIds: authors.map((a) => a._id),
-        authorNames: authors.map((a) => a.name ?? a.sfuId),
-        authorSfuIds: authors.map((a) => a.sfuId),
-        createdById: authors[0]._id,
-      });
-    })
-  );
-
-  // 6. Create comments
   await Promise.all(
     DEMO_COMMENTS.flatMap((commentList, subIdx) =>
       commentList.map((c) =>
-        Comment.create({
-          submissionId: submissionDocs[subIdx]._id,
-          userId: studentDocs[c.authorIndex]._id,
+        createComment({
+          submissionId: submissionIds[subIdx]!,
+          userId: studentIds[c.authorIndex]!,
           body: c.body,
         })
       )
@@ -255,27 +226,24 @@ export async function clearDemoDataAction(): Promise<
     return { ok: false, error: "Not allowed" };
   }
 
-  await dbConnect();
-
-  const demoClass = await ClassModel.findOne({ joinCode: DEMO_CLASS_JOIN_CODE });
+  const demoClass = await findClassByJoinCode(DEMO_CLASS_JOIN_CODE);
   if (!demoClass) {
     return { ok: false, error: "No demo class found." };
   }
 
-  const submissions = await Submission.find({ classId: demoClass._id });
-  const submissionIds = submissions.map((s) => s._id);
-
-  const commentDocs = (await Comment.find(
-    { submissionId: { $in: submissionIds } },
-    "_id"
-  ).lean()) as { _id: unknown }[];
-  const commentIds = commentDocs.map((c) => c._id);
-  await CommentVote.deleteMany({ commentId: { $in: commentIds } });
-  await SubmissionRating.deleteMany({ submissionId: { $in: submissionIds } });
-  await Comment.deleteMany({ submissionId: { $in: submissionIds } });
-  await Submission.deleteMany({ classId: demoClass._id });
-  await Enrollment.deleteMany({ classId: demoClass._id });
-  await ClassModel.deleteOne({ _id: demoClass._id });
+  const submissionIds = await listSubmissionIdsForClass(demoClass.id);
+  const allCommentIds: string[] = [];
+  for (const sid of submissionIds) {
+    allCommentIds.push(...(await listCommentIdsForSubmission(sid)));
+  }
+  await deleteCommentVotesForCommentIds(allCommentIds);
+  await deleteSubmissionRatingsForSubmissions(submissionIds);
+  for (const sid of submissionIds) {
+    await deleteAllCommentsForSubmission(sid);
+  }
+  await deleteSubmissionsForClass(demoClass.id);
+  await deleteEnrollmentsForClass(demoClass.id);
+  await deleteClass(demoClass.id);
 
   revalidatePath("/dashboard");
   revalidatePath("/admin");
