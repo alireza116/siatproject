@@ -11,12 +11,6 @@ export async function SiteHeader() {
           SFU Project Hub
         </Link>
         <nav className="flex items-center gap-1 text-sm">
-          <Link
-            href="/gallery"
-            className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            Gallery
-          </Link>
           {session ? (
             <>
               <Link
@@ -31,15 +25,29 @@ export async function SiteHeader() {
               >
                 Dashboard
               </Link>
+              <Link
+                href="/gallery"
+                className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Gallery
+              </Link>
               <SignOutButton />
             </>
           ) : (
-            <Link
-              href="/"
-              className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Sign in
-            </Link>
+            <>
+              <Link
+                href="/gallery"
+                className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Gallery
+              </Link>
+              <Link
+                href="/"
+                className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Sign in
+              </Link>
+            </>
           )}
         </nav>
       </div>

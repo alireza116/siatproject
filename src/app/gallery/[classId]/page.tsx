@@ -41,45 +41,48 @@ export default async function ClassGalleryPage({
           <p className="text-sm text-muted-foreground">No public submissions yet.</p>
         </div>
       ) : (
-        <ul className="mt-8 grid gap-4 sm:grid-cols-2">
+        <ul className="mt-8 flex flex-col gap-3">
           {items.map((s) => {
+            const r = ratings.get(s._id);
+            const ratingText =
+              !r || r.count === 0
+                ? "Not rated yet"
+                : `${r.average.toFixed(1)} / 5 · ${r.count} ${r.count === 1 ? "rating" : "ratings"}`;
             return (
               <li key={s._id}>
                 <Link
                   href={`/gallery/${classId}/${s._id}`}
-                  className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:border-foreground/20 hover:shadow"
+                  className="group flex flex-col gap-4 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition hover:border-foreground/20 hover:shadow sm:flex-row sm:items-stretch sm:p-4"
                 >
-                  {s.firstYoutubeId ? (
-                  <div className="relative aspect-video bg-muted">
-                    <Image
-                      src={`https://img.youtube.com/vi/${s.firstYoutubeId}/mqdefault.jpg`}
-                      alt=""
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 100vw, 50vw"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex aspect-video items-center justify-center bg-muted text-xs text-muted-foreground">
-                    No video
-                  </div>
-                )}
-                  <div className="flex flex-1 flex-col p-4">
-                    <p className="font-medium text-foreground">{s.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{s.groupName}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {(() => {
-                        const r = ratings.get(s._id);
-                        if (!r || r.count === 0) return "Rating: not rated yet";
-                        return `Rating: ${r.average.toFixed(1)} / 5 (${r.count})`;
-                      })()}
-                    </p>
-                    <div className="mt-auto pt-3 flex items-center justify-between">
-                      <Badge variant="secondary" className="text-[10px]">Public</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(s.createdAt).toLocaleDateString()}
-                      </span>
+                  <div className="relative w-full shrink-0 overflow-hidden rounded-lg bg-muted sm:w-56 md:w-64">
+                    <div className="relative aspect-video">
+                      {s.firstYoutubeId ? (
+                        <Image
+                          src={`https://img.youtube.com/vi/${s.firstYoutubeId}/mqdefault.jpg`}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 224px, 256px"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                          No video
+                        </div>
+                      )}
                     </div>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:py-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-medium text-foreground">{s.title}</p>
+                      <Badge variant="secondary" className="text-[10px]">
+                        Public
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{s.groupName}</p>
+                    <p className="text-xs text-muted-foreground">Rating: {ratingText}</p>
+                    <p className="mt-auto text-xs text-muted-foreground">
+                      {new Date(s.createdAt).toLocaleDateString()}
+                    </p>
                   </div>
                 </Link>
               </li>

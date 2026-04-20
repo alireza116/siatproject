@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { MultiInput } from "@/components/ui/multi-input";
 
 type Mode = "create" | "edit";
 
@@ -86,15 +87,15 @@ export function SubmissionForm({
           Group members{" "}
           <span className="text-muted-foreground font-normal">(optional)</span>
         </Label>
-        <Textarea
+        <MultiInput
           name="coauthorSfuIds"
-          rows={2}
-          defaultValue={initial?.coauthorSfuIds}
-          className="font-mono text-xs"
-          placeholder={"jsmith\nalee"}
+          initial={initial?.coauthorSfuIds}
+          placeholder="jsmith"
+          mono
+          addLabel="Add member"
         />
         <p className="text-xs text-muted-foreground">
-          SFU computing IDs of other group members, one per line. Do not include yourself.
+          SFU computing IDs of other group members. Do not include yourself.
         </p>
       </div>
 
@@ -110,27 +111,27 @@ export function SubmissionForm({
 
       <div className="space-y-2">
         <Label>YouTube URLs or video IDs <span className="text-destructive">*</span></Label>
-        <Textarea
+        <MultiInput
           name="youtubeUrls"
-          rows={3}
-          required
-          defaultValue={initial?.youtubeUrls}
-          className="font-mono text-xs"
-          placeholder={"https://www.youtube.com/watch?v=...\nhttps://youtu.be/..."}
+          initial={initial?.youtubeUrls}
+          placeholder="https://www.youtube.com/watch?v=…"
+          mono
+          requireFirst
+          inputMode="url"
+          addLabel="Add video"
         />
-        <p className="text-xs text-muted-foreground">One per line.</p>
       </div>
 
       <div className="space-y-2">
         <Label>Project URLs <span className="text-muted-foreground font-normal">(optional)</span></Label>
-        <Textarea
+        <MultiInput
           name="projectUrls"
-          rows={3}
-          defaultValue={initial?.projectUrls}
-          className="font-mono text-xs"
-          placeholder={"https://github.com/...\nhttps://..."}
+          initial={initial?.projectUrls}
+          placeholder="https://github.com/…"
+          mono
+          inputMode="url"
+          addLabel="Add link"
         />
-        <p className="text-xs text-muted-foreground">One per line.</p>
       </div>
 
       {showVisibility && (
