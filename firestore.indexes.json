@@ -1,14 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "classes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "ownerId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "enrollments",
       "queryScope": "COLLECTION",
       "fields": [

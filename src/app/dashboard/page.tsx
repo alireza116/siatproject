@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { getClassesByIds, listClassesOwnedBy } from "@/lib/firestore/classes";
+import {
+  getClassesByIds,
+  listAllClasses,
+  listClassesOwnedBy,
+  toLeanClassFull,
+} from "@/lib/firestore/classes";
+import type { ClassRecord } from "@/lib/firestore/classes";
 import { listEnrollmentsForUser } from "@/lib/firestore/enrollments";
 import { JoinForm } from "@/app/dashboard/join-form";
 import { LeaveClassButton } from "@/app/dashboard/leave-class-button";
@@ -10,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import type { LeanClassFull, LeanEnrollment } from "@/lib/types/lean";
-import { toLeanClassFull } from "@/lib/firestore/classes";
 
 function isTeachingEnrollment(
   e: LeanEnrollment,
@@ -30,6 +35,7 @@ type TeachingRow = {
   key: string;
   cls: LeanClassFull;
   roleLabel: string;
+  createdAt: number;
 };
 
 export default async function DashboardPage() {
@@ -45,12 +51,15 @@ export default async function DashboardPage() {
   const effectiveUserId = viewAsUserId ?? session.user.id;
   const isAdmin = !viewAsUserId && session.user.role === "GLOBAL_ADMIN";
 
-  // Fetch enrollments + owned classes in parallel. Owned classes are the
-  // source of truth for "classes I created" — they show up on my dashboard
-  // even if the instructor enrollment is missing for any reason.
-  const [enrollmentsRaw, ownedRaw] = await Promise.all([
+  // Fetch everything we need in parallel. For a global admin, we also pull
+  // the full class list so every class is visible on their dashboard — this
+  // is resilient to cases where the admin's current session identity differs
+  // from the ownerId recorded on a class (e.g. CAS vs. Google sign-in
+  // creates separate user documents for the same person).
+  const [enrollmentsRaw, ownedRaw, allClassesRaw] = await Promise.all([
     listEnrollmentsForUser(effectiveUserId),
     listClassesOwnedBy(effectiveUserId),
+    isAdmin ? listAllClasses() : Promise.resolve<ClassRecord[]>([]),
   ]);
 
   const enrollments: LeanEnrollment[] = enrollmentsRaw.map((e) => ({
@@ -63,48 +72,67 @@ export default async function DashboardPage() {
     studentCanDeleteSubmissions: e.studentCanDeleteSubmissions,
     studentCanChangeVisibility: e.studentCanChangeVisibility,
   }));
-  const ownedClasses = ownedRaw.map(toLeanClassFull);
 
-  // Classes we need to look up — union of enrolled classes and owned classes.
-  const ownedById = new Map(ownedClasses.map((c) => [c._id, c]));
+  // Union of all classes we need: owned + enrolled + (for admins) everything.
+  const classRecordById = new Map<string, ClassRecord>();
+  for (const c of ownedRaw) classRecordById.set(c.id, c);
+  for (const c of allClassesRaw) classRecordById.set(c.id, c);
   const missingClassIds = enrollments
     .map((e) => e.classId)
-    .filter((id) => !ownedById.has(id));
-  const extraClassesRaw = await getClassesByIds(missingClassIds);
-  const extraClasses = extraClassesRaw.map(toLeanClassFull);
+    .filter((id) => !classRecordById.has(id));
+  if (missingClassIds.length > 0) {
+    const extra = await getClassesByIds(missingClassIds);
+    for (const c of extra) classRecordById.set(c.id, c);
+  }
   const byId = new Map<string, LeanClassFull>();
-  for (const c of ownedClasses) byId.set(c._id, c);
-  for (const c of extraClasses) byId.set(c._id, c);
+  for (const [id, rec] of classRecordById) byId.set(id, toLeanClassFull(rec));
 
-  // Build the teaching list from enrollments first (preserves their ordering
-  // — newest enrollment first), then fill in any owned classes that don't
-  // have an enrollment row at all.
+  // Build the teaching list with a well-defined label precedence:
+  // OWNER (class.ownerId === me) > INSTRUCTOR / ASSISTANT enrollment > ADMIN
+  // (admin-only visibility on a class I have no direct relationship with).
   const teachingByClassId = new Map<string, TeachingRow>();
+
+  const addRow = (cls: LeanClassFull, roleLabel: string, key: string) => {
+    const rec = classRecordById.get(cls._id);
+    teachingByClassId.set(cls._id, {
+      key,
+      cls,
+      roleLabel,
+      createdAt: rec ? rec.createdAt.getTime() : 0,
+    });
+  };
+
   for (const e of enrollments) {
     const c = byId.get(e.classId);
     if (!c) continue;
     if (!isTeachingEnrollment(e, c, effectiveUserId)) continue;
-    teachingByClassId.set(c._id, {
-      key: e._id,
-      cls: c,
-      roleLabel: c.ownerId === effectiveUserId ? "OWNER" : e.role,
-    });
+    const roleLabel = c.ownerId === effectiveUserId ? "OWNER" : e.role;
+    addRow(c, roleLabel, e._id);
   }
-  for (const c of ownedClasses) {
-    if (teachingByClassId.has(c._id)) {
-      // Make sure owned classes always show the OWNER label even if the
-      // enrollment was stored as INSTRUCTOR.
-      const cur = teachingByClassId.get(c._id)!;
-      cur.roleLabel = "OWNER";
-      continue;
+
+  for (const rec of ownedRaw) {
+    const c = byId.get(rec.id);
+    if (!c) continue;
+    const existing = teachingByClassId.get(c._id);
+    if (existing) {
+      existing.roleLabel = "OWNER";
+    } else {
+      addRow(c, "OWNER", `owner:${c._id}`);
     }
-    teachingByClassId.set(c._id, {
-      key: `owner:${c._id}`,
-      cls: c,
-      roleLabel: "OWNER",
-    });
   }
-  const teaching = [...teachingByClassId.values()];
+
+  if (isAdmin) {
+    for (const rec of allClassesRaw) {
+      const c = byId.get(rec.id);
+      if (!c) continue;
+      if (teachingByClassId.has(c._id)) continue;
+      addRow(c, "ADMIN", `admin:${c._id}`);
+    }
+  }
+
+  const teaching = [...teachingByClassId.values()].sort(
+    (a, b) => b.createdAt - a.createdAt,
+  );
 
   // Students = enrollments where I'm not the owner and role === STUDENT.
   const learning: { e: LeanEnrollment; c: LeanClassFull }[] = [];

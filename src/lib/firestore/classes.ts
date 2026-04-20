@@ -85,15 +85,17 @@ export async function listAllClasses(): Promise<ClassRecord[]> {
   return q.docs.map((d) => mapClass(d.id, d.data()));
 }
 
-/** All classes this user created (is the owner of), newest first. */
+/**
+ * All classes this user created (is the owner of), newest first. We sort
+ * client-side to avoid needing a composite Firestore index on
+ * (ownerId, createdAt); the result set per owner is small.
+ */
 export async function listClassesOwnedBy(ownerId: string): Promise<ClassRecord[]> {
   const db = getFirestoreDb();
-  const q = await db
-    .collection(COL.classes)
-    .where("ownerId", "==", ownerId)
-    .orderBy("createdAt", "desc")
-    .get();
-  return q.docs.map((d) => mapClass(d.id, d.data()));
+  const q = await db.collection(COL.classes).where("ownerId", "==", ownerId).get();
+  const rows = q.docs.map((d) => mapClass(d.id, d.data()));
+  rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return rows;
 }
 
 export async function createClass(input: {
