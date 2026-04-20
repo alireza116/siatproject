@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { getClassesByIds } from "@/lib/firestore/classes";
+import { getClassesByIds, listClassesOwnedBy } from "@/lib/firestore/classes";
 import { listEnrollmentsForUser } from "@/lib/firestore/enrollments";
 import { JoinForm } from "@/app/dashboard/join-form";
 import { LeaveClassButton } from "@/app/dashboard/leave-class-button";
@@ -26,6 +26,12 @@ function isStudentEnrollment(e: LeanEnrollment, cls: LeanClassFull, userId: stri
   return e.role === "STUDENT";
 }
 
+type TeachingRow = {
+  key: string;
+  cls: LeanClassFull;
+  roleLabel: string;
+};
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -39,7 +45,14 @@ export default async function DashboardPage() {
   const effectiveUserId = viewAsUserId ?? session.user.id;
   const isAdmin = !viewAsUserId && session.user.role === "GLOBAL_ADMIN";
 
-  const enrollmentsRaw = await listEnrollmentsForUser(effectiveUserId);
+  // Fetch enrollments + owned classes in parallel. Owned classes are the
+  // source of truth for "classes I created" — they show up on my dashboard
+  // even if the instructor enrollment is missing for any reason.
+  const [enrollmentsRaw, ownedRaw] = await Promise.all([
+    listEnrollmentsForUser(effectiveUserId),
+    listClassesOwnedBy(effectiveUserId),
+  ]);
+
   const enrollments: LeanEnrollment[] = enrollmentsRaw.map((e) => ({
     _id: e.id,
     classId: e.classId,
@@ -50,20 +63,54 @@ export default async function DashboardPage() {
     studentCanDeleteSubmissions: e.studentCanDeleteSubmissions,
     studentCanChangeVisibility: e.studentCanChangeVisibility,
   }));
+  const ownedClasses = ownedRaw.map(toLeanClassFull);
 
-  const classIds = enrollments.map((e) => e.classId);
-  const classesRaw = await getClassesByIds(classIds);
-  const classes = classesRaw.map(toLeanClassFull);
-  const byId = new Map(classes.map((c) => [c._id, c]));
+  // Classes we need to look up — union of enrolled classes and owned classes.
+  const ownedById = new Map(ownedClasses.map((c) => [c._id, c]));
+  const missingClassIds = enrollments
+    .map((e) => e.classId)
+    .filter((id) => !ownedById.has(id));
+  const extraClassesRaw = await getClassesByIds(missingClassIds);
+  const extraClasses = extraClassesRaw.map(toLeanClassFull);
+  const byId = new Map<string, LeanClassFull>();
+  for (const c of ownedClasses) byId.set(c._id, c);
+  for (const c of extraClasses) byId.set(c._id, c);
 
-  const teaching: { e: LeanEnrollment; c: LeanClassFull }[] = [];
+  // Build the teaching list from enrollments first (preserves their ordering
+  // — newest enrollment first), then fill in any owned classes that don't
+  // have an enrollment row at all.
+  const teachingByClassId = new Map<string, TeachingRow>();
+  for (const e of enrollments) {
+    const c = byId.get(e.classId);
+    if (!c) continue;
+    if (!isTeachingEnrollment(e, c, effectiveUserId)) continue;
+    teachingByClassId.set(c._id, {
+      key: e._id,
+      cls: c,
+      roleLabel: c.ownerId === effectiveUserId ? "OWNER" : e.role,
+    });
+  }
+  for (const c of ownedClasses) {
+    if (teachingByClassId.has(c._id)) {
+      // Make sure owned classes always show the OWNER label even if the
+      // enrollment was stored as INSTRUCTOR.
+      const cur = teachingByClassId.get(c._id)!;
+      cur.roleLabel = "OWNER";
+      continue;
+    }
+    teachingByClassId.set(c._id, {
+      key: `owner:${c._id}`,
+      cls: c,
+      roleLabel: "OWNER",
+    });
+  }
+  const teaching = [...teachingByClassId.values()];
+
+  // Students = enrollments where I'm not the owner and role === STUDENT.
   const learning: { e: LeanEnrollment; c: LeanClassFull }[] = [];
   for (const e of enrollments) {
     const c = byId.get(e.classId);
     if (!c) continue;
-    if (isTeachingEnrollment(e, c, effectiveUserId)) {
-      teaching.push({ e, c });
-    }
     if (isStudentEnrollment(e, c, effectiveUserId)) {
       learning.push({ e, c });
     }
@@ -110,18 +157,18 @@ export default async function DashboardPage() {
               </p>
             ) : (
               <ul className="divide-y divide-border">
-                {teaching.map(({ e, c }) => (
-                  <li key={e._id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
-                    <Link href={`/classes/${c._id}`} className="min-w-0 flex-1 hover:text-foreground">
-                      <p className="font-medium text-foreground">{c.title}</p>
+                {teaching.map(({ key, cls, roleLabel }) => (
+                  <li key={key} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                    <Link href={`/classes/${cls._id}`} className="min-w-0 flex-1 hover:text-foreground">
+                      <p className="font-medium text-foreground">{cls.title}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        <span className="font-mono">{c.joinCode}</span>
+                        <span className="font-mono">{cls.joinCode}</span>
                         {" · "}
-                        <Badge variant="secondary" className="text-[10px] py-0">{e.role}</Badge>
+                        <Badge variant="secondary" className="text-[10px] py-0">{roleLabel}</Badge>
                       </p>
                     </Link>
                     <Link
-                      href={`/classes/${c._id}/projects`}
+                      href={`/classes/${cls._id}/projects`}
                       className="shrink-0 text-sm font-medium text-foreground underline underline-offset-4"
                     >
                       View projects

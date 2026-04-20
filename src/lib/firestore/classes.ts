@@ -85,6 +85,17 @@ export async function listAllClasses(): Promise<ClassRecord[]> {
   return q.docs.map((d) => mapClass(d.id, d.data()));
 }
 
+/** All classes this user created (is the owner of), newest first. */
+export async function listClassesOwnedBy(ownerId: string): Promise<ClassRecord[]> {
+  const db = getFirestoreDb();
+  const q = await db
+    .collection(COL.classes)
+    .where("ownerId", "==", ownerId)
+    .orderBy("createdAt", "desc")
+    .get();
+  return q.docs.map((d) => mapClass(d.id, d.data()));
+}
+
 export async function createClass(input: {
   title: string;
   description?: string;

@@ -11,7 +11,11 @@ export async function isClassInstructor(userId: string, classId: string): Promis
 
 export async function canAccessClass(userId: string, classId: string): Promise<boolean> {
   const en = await getEnrollment(classId, userId);
-  return !!en;
+  if (en) return true;
+  // A class owner always has access to their own class, even if the
+  // INSTRUCTOR enrollment is missing for any reason.
+  const cls = await getClassById(classId);
+  return cls?.ownerId === userId;
 }
 
 /** Enrolled in the class, or global admin opening an existing class (for management). */
