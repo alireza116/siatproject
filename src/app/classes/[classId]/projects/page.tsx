@@ -126,9 +126,9 @@ export default async function ClassProjectsPage({
       </Link>
       <h1 className="text-2xl font-semibold tracking-tight">Class projects</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {classManager
-          ? "All submissions for this class. Open one to watch demos, follow project links, and leave feedback."
-          : "Public submissions from everyone in the class, plus your own work (including class-only). Open a card to view details and comments."}
+        All submissions from everyone in this class. Open a card to watch demos,
+        follow project links, and leave feedback. The Public / Class only label
+        only controls whether a project shows up in the outside gallery.
       </p>
 
       {showGroupHints && (
