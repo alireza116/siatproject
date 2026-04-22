@@ -11,9 +11,19 @@ type Props = {
   classId: string;
   defaultVisibility: string;
   commentsOnPublic: boolean;
+  publicShowGroupName: boolean;
+  publicShowAuthorNames: boolean;
+  publicShowAuthorSfuIds: boolean;
 };
 
-export function ClassSettingsForm({ classId, defaultVisibility, commentsOnPublic }: Props) {
+export function ClassSettingsForm({
+  classId,
+  defaultVisibility,
+  commentsOnPublic,
+  publicShowGroupName,
+  publicShowAuthorNames,
+  publicShowAuthorSfuIds,
+}: Props) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -22,7 +32,7 @@ export function ClassSettingsForm({ classId, defaultVisibility, commentsOnPublic
     <div>
       <h2 className="text-base font-semibold">Class settings</h2>
       <form
-        className="mt-4 space-y-5"
+        className="mt-4 space-y-6"
         onSubmit={async (e) => {
           e.preventDefault();
           setPending(true);
@@ -64,6 +74,46 @@ export function ClassSettingsForm({ classId, defaultVisibility, commentsOnPublic
             <span>Allow comments on public submissions</span>
           </label>
         </div>
+
+        <fieldset className="space-y-3 rounded-xl border border-border bg-card/50 px-4 py-3">
+          <legend className="px-1 text-sm font-medium text-foreground">
+            Public gallery display
+          </legend>
+          <p className="text-xs text-muted-foreground">
+            Controls what outside visitors see on public gallery pages. These settings do not
+            affect the in-class project view.
+          </p>
+          <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="publicShowGroupName"
+              value="true"
+              defaultChecked={publicShowGroupName}
+              className="h-4 w-4 rounded border-input accent-foreground"
+            />
+            <span>Show group name</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="publicShowAuthorNames"
+              value="true"
+              defaultChecked={publicShowAuthorNames}
+              className="h-4 w-4 rounded border-input accent-foreground"
+            />
+            <span>Show author names</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="publicShowAuthorSfuIds"
+              value="true"
+              defaultChecked={publicShowAuthorSfuIds}
+              className="h-4 w-4 rounded border-input accent-foreground"
+            />
+            <span>Show author SFU IDs</span>
+          </label>
+        </fieldset>
 
         {err && (
           <Alert variant="destructive">

@@ -30,6 +30,10 @@ type Props = {
     commentsEnabled?: boolean;
   };
   showVisibility?: boolean;
+  /** Called after a successful save in "edit" mode. If provided, replaces the default router.refresh(). */
+  onSaved?: () => void;
+  /** Optional inline cancel button (typically shown on the edit screen). */
+  onCancel?: () => void;
 };
 
 export function SubmissionForm({
@@ -38,6 +42,8 @@ export function SubmissionForm({
   submissionId,
   initial,
   showVisibility,
+  onSaved,
+  onCancel,
 }: Props) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
@@ -62,6 +68,9 @@ export function SubmissionForm({
         }
         if (mode === "create" && "id" in r) {
           router.push(`/classes/${classId}/submissions/${r.id}`);
+        } else if (onSaved) {
+          router.refresh();
+          onSaved();
         } else {
           router.refresh();
         }
@@ -169,9 +178,22 @@ export function SubmissionForm({
         </Alert>
       )}
 
-      <Button type="submit" disabled={pending} size="lg">
-        {pending ? "Saving…" : mode === "create" ? "Create submission" : "Save changes"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={pending} size="lg">
+          {pending ? "Saving…" : mode === "create" ? "Create submission" : "Save changes"}
+        </Button>
+        {mode === "edit" && onCancel && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            disabled={pending}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        )}
+      </div>
     </form>
   );
 }

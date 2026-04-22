@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { isSubmissionAuthor, canStudentViewSubmissionInClass } from "@/lib/submission-access";
+import { isSubmissionAuthor } from "@/lib/submission-access";
 import { auth } from "@/auth";
 import { deleteSubmissionAction } from "@/app/actions/submission";
 import {
@@ -18,12 +18,11 @@ import {
 } from "@/lib/firestore/submissions";
 import { listUsersByIds } from "@/lib/firestore/users";
 import { effectiveCommentsOnPublic, effectiveVisibility } from "@/lib/visibility";
-import { SubmissionForm } from "@/components/SubmissionForm";
+import { SubmissionViewOrEdit } from "@/components/SubmissionViewOrEdit";
 import { CommentsBlock } from "@/components/CommentsBlock";
 import { DeleteSubmissionButton } from "@/components/DeleteSubmissionButton";
 import { ProjectNav } from "@/components/ProjectNav";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
@@ -73,10 +72,9 @@ export default async function SubmissionDetailPage({
       globalRole: session.user.role,
       viewAsActive: false,
     }));
-  const canView =
-    classManager || canStudentViewSubmissionInClass(sub, cls, effectiveUserId);
-  if (!canView) notFound();
-
+  // Everyone enrolled in the class (or a manager / global admin) can see and
+  // rate any submission — enrollment has already been checked above. Public /
+  // private only gates the external gallery view, not the in-class view.
   const isAuthor = !viewAsUserId && isSubmissionAuthor(sub, effectiveUserId);
   const studentPriv = await getStudentSubmissionPrivileges(effectiveUserId, classId);
   const canEditContent = classManager || (isAuthor && studentPriv.canEditSubmissions);
@@ -181,93 +179,31 @@ export default async function SubmissionDetailPage({
       <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_380px]">
 
         <div className="min-w-0">
-          {sub.description && (
-            <section>
-              <h2 className="text-sm font-semibold text-foreground">Abstract</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                {sub.description}
-              </p>
-            </section>
-          )}
-
-          {(sub.youtubeVideoIds ?? []).length > 0 && (
-            <section className={sub.description ? "mt-8" : ""}>
-              <h2 className="text-sm font-semibold text-foreground">Videos</h2>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                {(sub.youtubeVideoIds ?? []).map((id) => (
-                  <div key={id} className="aspect-video overflow-hidden rounded-xl bg-muted">
-                    <iframe
-                      title={`YouTube ${id}`}
-                      className="h-full w-full"
-                      src={`https://www.youtube.com/embed/${id}`}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {(sub.projectUrls ?? []).length > 0 && (
-            <section className="mt-8">
-              <h2 className="text-sm font-semibold text-foreground">Project links</h2>
-              <ul className="mt-2 space-y-1">
-                {(sub.projectUrls ?? []).map((u) => (
-                  <li key={u}>
-                    <a
-                      href={u}
-                      className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {u}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {isAuthor && !classManager && !canEditContent && (
-            <p className="mt-10 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-              Editing is turned off for your account in this class. Contact your instructor if you
-              need changes.
-            </p>
-          )}
-
-          {canEditContent && (
-            <>
-              <Separator className="mt-10" />
-              <section className="mt-8">
-                <h2 className="text-base font-semibold">Edit submission</h2>
-                {!canChangeVisUI && (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Public/private and comment settings are locked for your account; other fields
-                    can be updated below.
-                  </p>
-                )}
-                <SubmissionForm
-                  mode="edit"
-                  classId={classId}
-                  submissionId={submissionId}
-                  showVisibility={canChangeVisUI}
-                  initial={{
-                    title: sub.title,
-                    groupName: sub.groupName,
-                    description: sub.description,
-                    projectUrls: projectText,
-                    youtubeUrls: ytLines.join("\n"),
-                    coauthorSfuIds: (sub.authorSfuIds ?? [])
-                      .filter((id) => id !== session.user.sfuId)
-                      .join("\n"),
-                    visibility: sub.visibility ?? cls.defaultVisibility,
-                    commentsEnabled: sub.commentsEnabled ?? cls.commentsOnPublic,
-                  }}
-                />
-              </section>
-            </>
-          )}
+          <SubmissionViewOrEdit
+            classId={classId}
+            submissionId={submissionId}
+            view={{
+              description: sub.description,
+              youtubeVideoIds: sub.youtubeVideoIds ?? [],
+              projectUrls: sub.projectUrls ?? [],
+            }}
+            edit={{
+              title: sub.title,
+              groupName: sub.groupName,
+              description: sub.description,
+              projectUrls: projectText,
+              youtubeUrls: ytLines.join("\n"),
+              coauthorSfuIds: (sub.authorSfuIds ?? [])
+                .filter((id) => id !== session.user.sfuId)
+                .join("\n"),
+              visibility: sub.visibility ?? cls.defaultVisibility,
+              commentsEnabled: sub.commentsEnabled ?? cls.commentsOnPublic,
+            }}
+            canEdit={canEditContent}
+            canChangeVisibility={canChangeVisUI}
+            showVisibilityLockedNote={canEditContent}
+            showEditingDisabledNote={isAuthor && !classManager && !canEditContent}
+          />
         </div>
 
         <aside className="lg:sticky lg:top-[4.5rem] lg:self-start">
@@ -276,7 +212,7 @@ export default async function SubmissionDetailPage({
               submissionId={submissionId}
               comments={commentRows}
               canComment={vis === "PRIVATE" || commentsOk}
-              canRate={canView}
+              canRate
               hasOwnComment={hasOwnComment}
               signedInUserId={session.user.id}
               isInstructor={classManager}

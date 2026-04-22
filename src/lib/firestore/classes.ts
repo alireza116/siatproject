@@ -12,6 +12,9 @@ export type ClassRecord = {
   ownerId: string;
   defaultVisibility: "PRIVATE" | "PUBLIC";
   commentsOnPublic: boolean;
+  publicShowGroupName: boolean;
+  publicShowAuthorNames: boolean;
+  publicShowAuthorSfuIds: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -25,6 +28,9 @@ export function toLeanClassFull(c: ClassRecord): LeanClassFull {
     ownerId: c.ownerId,
     defaultVisibility: c.defaultVisibility,
     commentsOnPublic: c.commentsOnPublic,
+    publicShowGroupName: c.publicShowGroupName,
+    publicShowAuthorNames: c.publicShowAuthorNames,
+    publicShowAuthorSfuIds: c.publicShowAuthorSfuIds,
   };
 }
 
@@ -37,6 +43,11 @@ function mapClass(id: string, data: FirebaseFirestore.DocumentData): ClassRecord
     ownerId: data.ownerId,
     defaultVisibility: data.defaultVisibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
     commentsOnPublic: data.commentsOnPublic !== false,
+    // All "publicShow*" flags default to true for backwards compat; a missing
+    // field means the class was created before this feature existed.
+    publicShowGroupName: data.publicShowGroupName !== false,
+    publicShowAuthorNames: data.publicShowAuthorNames !== false,
+    publicShowAuthorSfuIds: data.publicShowAuthorSfuIds !== false,
     createdAt: asDate(data.createdAt),
     updatedAt: asDate(data.updatedAt),
   };
@@ -123,7 +134,13 @@ export async function createClass(input: {
 
 export async function updateClassSettings(
   classId: string,
-  input: { defaultVisibility: "PRIVATE" | "PUBLIC"; commentsOnPublic: boolean }
+  input: {
+    defaultVisibility: "PRIVATE" | "PUBLIC";
+    commentsOnPublic: boolean;
+    publicShowGroupName: boolean;
+    publicShowAuthorNames: boolean;
+    publicShowAuthorSfuIds: boolean;
+  }
 ): Promise<void> {
   const db = getFirestoreDb();
   await db
@@ -132,6 +149,9 @@ export async function updateClassSettings(
     .update({
       defaultVisibility: input.defaultVisibility,
       commentsOnPublic: input.commentsOnPublic,
+      publicShowGroupName: input.publicShowGroupName,
+      publicShowAuthorNames: input.publicShowAuthorNames,
+      publicShowAuthorSfuIds: input.publicShowAuthorSfuIds,
       updatedAt: FieldValue.serverTimestamp(),
     });
 }

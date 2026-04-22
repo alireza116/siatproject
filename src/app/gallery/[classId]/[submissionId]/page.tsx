@@ -94,10 +94,21 @@ export default async function PublicSubmissionPage({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sub.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {sub.groupName}
-            {sub.authorSfuIds?.length > 0 && ` · ${sub.authorSfuIds.join(", ")}`}
-          </p>
+          {(() => {
+            const bits: string[] = [];
+            if (cls.publicShowGroupName !== false && sub.groupName) {
+              bits.push(sub.groupName);
+            }
+            if (cls.publicShowAuthorNames !== false && sub.authorNames?.length > 0) {
+              bits.push(sub.authorNames.join(", "));
+            }
+            if (cls.publicShowAuthorSfuIds !== false && sub.authorSfuIds?.length > 0) {
+              bits.push(sub.authorSfuIds.join(", "));
+            }
+            return bits.length > 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">{bits.join(" · ")}</p>
+            ) : null;
+          })()}
           <Badge variant="secondary" className="mt-2 text-[10px]">Public</Badge>
         </div>
         {session?.user?.id && isInstructor && (

@@ -20,6 +20,9 @@ export async function updateClassSettingsAction(formData: FormData) {
   }
   const defaultVisibility = String(formData.get("defaultVisibility") ?? "");
   const commentsOnPublic = formData.get("commentsOnPublic") === "true";
+  const publicShowGroupName = formData.get("publicShowGroupName") === "true";
+  const publicShowAuthorNames = formData.get("publicShowAuthorNames") === "true";
+  const publicShowAuthorSfuIds = formData.get("publicShowAuthorSfuIds") === "true";
 
   const cls = await getClassById(classId);
   if (!cls) return { ok: false as const, error: "Not found" };
@@ -31,6 +34,9 @@ export async function updateClassSettingsAction(formData: FormData) {
   await updateClassSettings(classId, {
     defaultVisibility: vis,
     commentsOnPublic,
+    publicShowGroupName,
+    publicShowAuthorNames,
+    publicShowAuthorSfuIds,
   });
 
   revalidatePath(`/classes/${classId}`);

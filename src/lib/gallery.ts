@@ -12,6 +12,8 @@ export type PublicSubmissionListItem = {
   _id: string;
   title: string;
   groupName: string;
+  authorNames: string[];
+  authorSfuIds: string[];
   classTitle: string;
   firstYoutubeId?: string;
   createdAt: Date;
@@ -53,6 +55,9 @@ function toLeanClass(c: import("@/lib/firestore/classes").ClassRecord): LeanClas
     ownerId: c.ownerId,
     defaultVisibility: c.defaultVisibility,
     commentsOnPublic: c.commentsOnPublic,
+    publicShowGroupName: c.publicShowGroupName,
+    publicShowAuthorNames: c.publicShowAuthorNames,
+    publicShowAuthorSfuIds: c.publicShowAuthorSfuIds,
   };
 }
 
@@ -108,6 +113,8 @@ export async function listPublicSubmissionsForClass(
       _id: s._id,
       title: s.title,
       groupName: s.groupName,
+      authorNames: s.authorNames ?? [],
+      authorSfuIds: s.authorSfuIds ?? [],
       classTitle: cls.title,
       firstYoutubeId: s.youtubeVideoIds?.[0],
       createdAt: s.createdAt,

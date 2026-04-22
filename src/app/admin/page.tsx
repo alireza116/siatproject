@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { RevokeAdminButton, GrantAdminForm } from "@/app/admin/admin-forms";
 import { SeedControls } from "@/app/admin/seed-controls";
+import { BulkSubmissionsVisibilityControls } from "@/components/BulkSubmissionsVisibilityControls";
 
 type AdminUser = { sfuId: string; name?: string; bootstrap: boolean };
 
@@ -144,7 +145,10 @@ export default async function AdminPage() {
         <div>
           <h2 className="text-base font-semibold">Export data</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Download submissions and comments as CSV for each class.
+            Download submissions and comments as CSV for each class. Use{" "}
+            <span className="font-medium text-foreground">All public</span> /{" "}
+            <span className="font-medium text-foreground">All private</span> to set every
+            submission&apos;s gallery visibility for that class at once.
           </p>
         </div>
         {exportClasses.length === 0 ? (
@@ -160,7 +164,8 @@ export default async function AdminPage() {
                       {c.submissionCount} {c.submissionCount === 1 ? "submission" : "submissions"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <BulkSubmissionsVisibilityControls classId={c._id} compact />
                     <a
                       href={`/api/admin/export/submissions?classId=${c._id}`}
                       className={cn(buttonVariants({ variant: "outline", size: "xs" }))}

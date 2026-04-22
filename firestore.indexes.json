@@ -1,23 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "enrollments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "enrollments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "classId", "order": "ASCENDING" },
-        { "fieldPath": "role", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "submissions",
       "queryScope": "COLLECTION",
       "fields": [

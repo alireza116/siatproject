@@ -11,6 +11,12 @@ export type LeanClass = {
   _id: string;
   defaultVisibility: "PRIVATE" | "PUBLIC";
   commentsOnPublic: boolean;
+  /** Show the project's group name on public gallery pages. Defaults to true. */
+  publicShowGroupName?: boolean;
+  /** Show authors' real names on public gallery pages. Defaults to true. */
+  publicShowAuthorNames?: boolean;
+  /** Show authors' SFU computing IDs on public gallery pages. Defaults to true. */
+  publicShowAuthorSfuIds?: boolean;
 };
 
 export type LeanClassFull = LeanClass & {

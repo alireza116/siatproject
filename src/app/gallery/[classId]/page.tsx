@@ -78,7 +78,15 @@ export default async function ClassGalleryPage({
                         Public
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{s.groupName}</p>
+                    {cls.publicShowGroupName !== false && s.groupName && (
+                      <p className="text-xs text-muted-foreground">{s.groupName}</p>
+                    )}
+                    {cls.publicShowAuthorNames !== false && s.authorNames.length > 0 && (
+                      <p className="text-xs text-muted-foreground">{s.authorNames.join(", ")}</p>
+                    )}
+                    {cls.publicShowAuthorSfuIds !== false && s.authorSfuIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground">{s.authorSfuIds.join(", ")}</p>
+                    )}
                     <p className="text-xs text-muted-foreground">Rating: {ratingText}</p>
                     <p className="mt-auto text-xs text-muted-foreground">
                       {new Date(s.createdAt).toLocaleDateString()}

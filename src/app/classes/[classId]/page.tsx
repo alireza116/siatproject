@@ -6,6 +6,7 @@ import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
 import { listSubmissionsByClass, toLeanSubmissionFull } from "@/lib/firestore/submissions";
 import { ClassSettingsForm } from "./class-settings-form";
 import { StudentPrivilegesSection } from "./student-privileges-section";
+import { BulkSubmissionsVisibilityControls } from "@/components/BulkSubmissionsVisibilityControls";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -117,7 +118,12 @@ export default async function ClassPage({
             classId={classId}
             defaultVisibility={cls.defaultVisibility}
             commentsOnPublic={cls.commentsOnPublic}
+            publicShowGroupName={cls.publicShowGroupName !== false}
+            publicShowAuthorNames={cls.publicShowAuthorNames !== false}
+            publicShowAuthorSfuIds={cls.publicShowAuthorSfuIds !== false}
           />
+          <Separator className="my-8" />
+          <BulkSubmissionsVisibilityControls classId={classId} />
           <Separator className="my-8" />
           <StudentPrivilegesSection classId={classId} />
         </>

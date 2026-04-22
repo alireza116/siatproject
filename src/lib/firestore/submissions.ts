@@ -174,6 +174,38 @@ export async function updateSubmission(
   await ref.update(payload);
 }
 
+/**
+ * Set `visibility` on every submission in a class (explicit PUBLIC or PRIVATE).
+ * Returns how many documents were updated.
+ */
+export async function setAllSubmissionsVisibilityInClass(
+  classId: string,
+  visibility: "PUBLIC" | "PRIVATE"
+): Promise<number> {
+  const db = getFirestoreDb();
+  const q = await db.collection(COL.submissions).where("classId", "==", classId).get();
+  if (q.empty) return 0;
+  const maxOps = 450;
+  let batch = db.batch();
+  let inBatch = 0;
+  let total = 0;
+  for (const d of q.docs) {
+    batch.update(d.ref, {
+      visibility,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    inBatch++;
+    total++;
+    if (inBatch >= maxOps) {
+      await batch.commit();
+      batch = db.batch();
+      inBatch = 0;
+    }
+  }
+  if (inBatch > 0) await batch.commit();
+  return total;
+}
+
 export async function deleteSubmission(submissionId: string): Promise<void> {
   const db = getFirestoreDb();
   await db.collection(COL.submissions).doc(submissionId).delete();

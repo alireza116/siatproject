@@ -1,23 +1,21 @@
 import { listStudentEnrollmentsForClass } from "@/lib/firestore/enrollments";
 import { listUsersByIds } from "@/lib/firestore/users";
-import { StudentPrivilegeRow } from "./student-privilege-row";
-
-type Row = {
-  userId: string;
-  label: string;
-  studentCanEditSubmissions: boolean;
-  studentCanDeleteSubmissions: boolean;
-  studentCanChangeVisibility: boolean;
-};
+import { StudentPrivilegesManager } from "./student-privileges-manager";
 
 export async function StudentPrivilegesSection({ classId }: { classId: string }) {
   const enrollments = await listStudentEnrollmentsForClass(classId);
 
   if (enrollments.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-        No students enrolled yet. When they join, you can enable editing, deletion, and visibility
-        controls per student.
+      <div>
+        <h2 className="text-base font-semibold">Student submission privileges</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          New students can edit their own submissions and change public/private by default.
+          Deleting is off by default. Adjust per student or in bulk once people join.
+        </p>
+        <div className="mt-4 rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+          No students enrolled yet.
+        </div>
       </div>
     );
   }
@@ -26,7 +24,7 @@ export async function StudentPrivilegesSection({ classId }: { classId: string })
   const users = await listUsersByIds(userIds);
   const userMap = new Map(users.map((u) => [u.id, u]));
 
-  const rows: Row[] = enrollments.map((e) => {
+  const rows = enrollments.map((e) => {
     const u = userMap.get(e.userId);
     const label =
       u?.sfuId && u?.name ? `${u.sfuId} — ${u.name}` : u?.sfuId ?? u?.name ?? e.userId;
@@ -39,26 +37,5 @@ export async function StudentPrivilegesSection({ classId }: { classId: string })
     };
   });
 
-  return (
-    <div>
-      <h2 className="text-base font-semibold">Student submission privileges</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        By default, students cannot edit, delete, or change public/private settings on their
-        submissions. Enable each capability per student when you are ready.
-      </p>
-      <ul className="mt-4 divide-y divide-border rounded-xl border border-border bg-card">
-        {rows.map((r) => (
-          <StudentPrivilegeRow
-            key={r.userId}
-            classId={classId}
-            userId={r.userId}
-            label={r.label}
-            studentCanEditSubmissions={r.studentCanEditSubmissions}
-            studentCanDeleteSubmissions={r.studentCanDeleteSubmissions}
-            studentCanChangeVisibility={r.studentCanChangeVisibility}
-          />
-        ))}
-      </ul>
-    </div>
-  );
+  return <StudentPrivilegesManager classId={classId} rows={rows} />;
 }

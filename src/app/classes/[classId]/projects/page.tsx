@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canAccessClassOrGlobalAdmin, isClassAppManager } from "@/lib/class-access";
-import { canStudentViewSubmissionInClass } from "@/lib/submission-access";
 import { getViewAsUserId } from "@/lib/view-as";
 import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
 import { listSubmissionsByClass, toLeanSubmissionFull } from "@/lib/firestore/submissions";
@@ -64,9 +63,8 @@ export default async function ClassProjectsPage({
       globalRole: session.user.role,
       viewAsActive: false,
     }));
-  const submissions = classManager
-    ? allSubmissions
-    : allSubmissions.filter((s) => canStudentViewSubmissionInClass(s, cls, effectiveUserId));
+  // Everyone enrolled (student or manager) sees every submission in the class.
+  const submissions = allSubmissions;
   const ratings = await getRatingStatsBySubmissionIds(
     submissions.map((s) => s._id)
   );
