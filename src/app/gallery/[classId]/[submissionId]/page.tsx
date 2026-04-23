@@ -75,21 +75,40 @@ export default async function PublicSubmissionPage({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
-      <Link
-        href={`/gallery/${classId}`}
-        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 text-muted-foreground")}
-      >
-        ← {cls.title}
-      </Link>
+      <header className="mb-10 space-y-8">
+        <div>
+          <Link
+            href={`/gallery/${classId}`}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "-ml-2 inline-flex w-fit max-w-full gap-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+            aria-label={`Back to ${cls.title} gallery`}
+          >
+            <span aria-hidden className="shrink-0">
+              ←
+            </span>
+            <span className="truncate">{cls.title}</span>
+          </Link>
+        </div>
 
-      {allPublicSubs.length > 1 && (
-        <ProjectNav
-          prev={prevNavSub ? { href: `/gallery/${classId}/${prevNavSub._id}`, title: prevNavSub.title } : null}
-          next={nextNavSub ? { href: `/gallery/${classId}/${nextNavSub._id}`, title: nextNavSub.title } : null}
-          current={navIndex + 1}
-          total={allPublicSubs.length}
-        />
-      )}
+        {allPublicSubs.length > 1 && (
+          <ProjectNav
+            prev={
+              prevNavSub
+                ? { href: `/gallery/${classId}/${prevNavSub._id}`, title: prevNavSub.title }
+                : null
+            }
+            next={
+              nextNavSub
+                ? { href: `/gallery/${classId}/${nextNavSub._id}`, title: nextNavSub.title }
+                : null
+            }
+            current={navIndex + 1}
+            total={allPublicSubs.length}
+          />
+        )}
+      </header>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>

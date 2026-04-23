@@ -133,21 +133,46 @@ export default async function SubmissionDetailPage({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
-      <Link
-        href={`/classes/${classId}`}
-        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 text-muted-foreground")}
-      >
-        ← {cls.title}
-      </Link>
+      <header className="mb-10 space-y-8">
+        <div>
+          <Link
+            href={`/classes/${classId}`}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "-ml-2 inline-flex w-fit max-w-full gap-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+            aria-label={`Back to ${cls.title}`}
+          >
+            <span aria-hidden className="shrink-0">
+              ←
+            </span>
+            <span className="truncate">{cls.title}</span>
+          </Link>
+        </div>
 
-      {visibleSubsForNav.length > 1 && (
-        <ProjectNav
-          prev={prevNavSub ? { href: `/classes/${classId}/submissions/${prevNavSub._id}`, title: prevNavSub.title } : null}
-          next={nextNavSub ? { href: `/classes/${classId}/submissions/${nextNavSub._id}`, title: nextNavSub.title } : null}
-          current={navIndex + 1}
-          total={visibleSubsForNav.length}
-        />
-      )}
+        {visibleSubsForNav.length > 1 && (
+          <ProjectNav
+            prev={
+              prevNavSub
+                ? {
+                    href: `/classes/${classId}/submissions/${prevNavSub._id}`,
+                    title: prevNavSub.title,
+                  }
+                : null
+            }
+            next={
+              nextNavSub
+                ? {
+                    href: `/classes/${classId}/submissions/${nextNavSub._id}`,
+                    title: nextNavSub.title,
+                  }
+                : null
+            }
+            current={navIndex + 1}
+            total={visibleSubsForNav.length}
+          />
+        )}
+      </header>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
