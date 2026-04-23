@@ -198,9 +198,18 @@ export async function bulkUpdateStudentPrivileges(
 export async function deleteEnrollmentsForClass(classId: string): Promise<void> {
   const db = getFirestoreDb();
   const q = await db.collection(COL.enrollments).where("classId", "==", classId).get();
-  const batch = db.batch();
+  if (q.empty) return;
+  const maxOps = 450;
+  let batch = db.batch();
+  let n = 0;
   for (const d of q.docs) {
     batch.delete(d.ref);
+    n++;
+    if (n >= maxOps) {
+      await batch.commit();
+      batch = db.batch();
+      n = 0;
+    }
   }
-  await batch.commit();
+  if (n > 0) await batch.commit();
 }

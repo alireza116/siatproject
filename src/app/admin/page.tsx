@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { listGlobalAdmins } from "@/lib/firestore/users";
-import { findClassByJoinCode, listAllClassesByTitle } from "@/lib/firestore/classes";
+import { findClassByJoinCode, listAllClasses } from "@/lib/firestore/classes";
 import { listStudentEnrollmentsForClass } from "@/lib/firestore/enrollments";
 import { countSubmissionsPerClass } from "@/lib/firestore/submissions";
 import { listUsersByIds } from "@/lib/firestore/users";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { RevokeAdminButton, GrantAdminForm } from "@/app/admin/admin-forms";
 import { SeedControls } from "@/app/admin/seed-controls";
 import { BulkSubmissionsVisibilityControls } from "@/components/BulkSubmissionsVisibilityControls";
+import { PermanentClassDeleteForm } from "@/app/admin/permanent-class-delete-form";
 
 type AdminUser = { sfuId: string; name?: string; bootstrap: boolean };
 
@@ -41,12 +42,14 @@ export default async function AdminPage() {
   }
   admins.sort((a, b) => a.sfuId.localeCompare(b.sfuId));
 
-  type ExportClass = { _id: string; title: string; submissionCount: number };
-  const allClasses = await listAllClassesByTitle();
+  type ExportClass = { _id: string; title: string; joinCode: string; submissionCount: number };
+  const allClassRecords = await listAllClasses();
+  allClassRecords.sort((a, b) => a.title.localeCompare(b.title));
   const countMap = await countSubmissionsPerClass();
-  const exportClasses: ExportClass[] = allClasses.map((c) => ({
+  const exportClasses: ExportClass[] = allClassRecords.map((c) => ({
     _id: c.id,
     title: c.title,
+    joinCode: c.joinCode,
     submissionCount: countMap.get(c.id) ?? 0,
   }));
 
@@ -184,6 +187,29 @@ export default async function AdminPage() {
             </ul>
           </div>
         )}
+      </section>
+
+      <Separator className="my-8" />
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-destructive">Danger zone</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Permanently remove a class and every related record in the database. Only available to
+            global administrators; all confirmations are verified again on the server before
+            anything is deleted.
+          </p>
+        </div>
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+          <PermanentClassDeleteForm
+            classes={exportClasses.map((c) => ({
+              id: c._id,
+              title: c.title,
+              joinCode: c.joinCode,
+              submissionCount: c.submissionCount,
+            }))}
+          />
+        </div>
       </section>
 
       <Separator className="my-8" />

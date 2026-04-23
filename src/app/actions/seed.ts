@@ -1,24 +1,11 @@
 "use server";
 
 import { auth } from "@/auth";
-import { createClass, deleteClass, findClassByJoinCode } from "@/lib/firestore/classes";
-import {
-  createComment,
-  deleteAllCommentsForSubmission,
-  deleteCommentVotesForCommentIds,
-  deleteSubmissionRatingsForSubmissions,
-  listCommentIdsForSubmission,
-} from "@/lib/firestore/comments";
-import {
-  createInstructorEnrollment,
-  deleteEnrollmentsForClass,
-  ensureStudentEnrollment,
-} from "@/lib/firestore/enrollments";
-import {
-  createSubmission,
-  deleteSubmissionsForClass,
-  listSubmissionIdsForClass,
-} from "@/lib/firestore/submissions";
+import { createClass, findClassByJoinCode } from "@/lib/firestore/classes";
+import { createComment } from "@/lib/firestore/comments";
+import { purgeClassAndRelatedData } from "@/lib/firestore/class-purge";
+import { createInstructorEnrollment, ensureStudentEnrollment } from "@/lib/firestore/enrollments";
+import { createSubmission } from "@/lib/firestore/submissions";
 import { createUserDemo, findUserBySfuId } from "@/lib/firestore/users";
 import { revalidatePath } from "next/cache";
 
@@ -231,19 +218,7 @@ export async function clearDemoDataAction(): Promise<
     return { ok: false, error: "No demo class found." };
   }
 
-  const submissionIds = await listSubmissionIdsForClass(demoClass.id);
-  const allCommentIds: string[] = [];
-  for (const sid of submissionIds) {
-    allCommentIds.push(...(await listCommentIdsForSubmission(sid)));
-  }
-  await deleteCommentVotesForCommentIds(allCommentIds);
-  await deleteSubmissionRatingsForSubmissions(submissionIds);
-  for (const sid of submissionIds) {
-    await deleteAllCommentsForSubmission(sid);
-  }
-  await deleteSubmissionsForClass(demoClass.id);
-  await deleteEnrollmentsForClass(demoClass.id);
-  await deleteClass(demoClass.id);
+  await purgeClassAndRelatedData(demoClass.id);
 
   revalidatePath("/dashboard");
   revalidatePath("/admin");

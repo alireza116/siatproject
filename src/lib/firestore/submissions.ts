@@ -220,11 +220,19 @@ export async function listSubmissionIdsForClass(classId: string): Promise<string
 export async function deleteSubmissionsForClass(classId: string): Promise<void> {
   const db = getFirestoreDb();
   const q = await db.collection(COL.submissions).where("classId", "==", classId).get();
-  const batch = db.batch();
+  const maxOps = 450;
+  let batch = db.batch();
+  let n = 0;
   for (const d of q.docs) {
     batch.delete(d.ref);
+    n++;
+    if (n >= maxOps) {
+      await batch.commit();
+      batch = db.batch();
+      n = 0;
+    }
   }
-  if (!q.empty) await batch.commit();
+  if (n > 0) await batch.commit();
 }
 
 export async function countSubmissionsForClass(classId: string): Promise<number> {
