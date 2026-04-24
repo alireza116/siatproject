@@ -8,7 +8,7 @@ import {
   getStudentSubmissionPrivileges,
   isClassAppManager,
 } from "@/lib/class-access";
-import type { LeanComment, LeanUserPublic } from "@/lib/types/lean";
+import type { LeanComment } from "@/lib/types/lean";
 import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
 import { listCommentsForSubmission } from "@/lib/firestore/comments";
 import {
@@ -27,6 +27,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import { getCommentVoteSummary, getRatingStatsForSubmission } from "@/lib/feedback";
+import { appDisplayLabelFromRecord } from "@/lib/display-name";
 
 export default async function SubmissionDetailPage({
   params,
@@ -116,9 +117,6 @@ export default async function SubmissionDetailPage({
 
   const commentRows = comments.map((c) => {
     const u = userMap.get(c.userId);
-    const pub: LeanUserPublic | undefined = u
-      ? { _id: u.id, name: u.name, sfuId: u.sfuId }
-      : undefined;
     return {
       id: c._id,
       body: c.body,
@@ -127,7 +125,7 @@ export default async function SubmissionDetailPage({
       upvotes: voteSummary.get(c._id)?.upvotes ?? 0,
       downvotes: voteSummary.get(c._id)?.downvotes ?? 0,
       userVote: voteSummary.get(c._id)?.userVote ?? 0,
-      userLabel: pub?.sfuId ?? pub?.name ?? "User",
+      userLabel: u ? appDisplayLabelFromRecord(u) : "User",
     };
   });
 

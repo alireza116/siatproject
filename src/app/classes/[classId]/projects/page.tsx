@@ -11,6 +11,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 import { getGroupReviewsForSubmissions } from "@/lib/group-reviews";
+import { listUsersByIds } from "@/lib/firestore/users";
+import { appDisplayLabelFromRecord } from "@/lib/display-name";
 import { ClassProjectsFilterableList } from "@/components/ClassProjectsFilterableList";
 
 export default async function ClassProjectsPage({
@@ -78,18 +80,20 @@ export default async function ClassProjectsPage({
     for (const s of submissions) {
       if (!s.authorUserIds?.includes(effectiveUserId)) continue;
       mySubmissionIds.add(s._id);
-      for (let i = 0; i < s.authorUserIds.length; i++) {
-        const uid = s.authorUserIds[i]!;
+      for (const uid of s.authorUserIds ?? []) {
         groupUserIds.add(uid);
-        const sfu = s.authorSfuIds?.[i];
-        const name = s.authorNames?.[i];
-        if (!groupLabelById.has(uid)) {
-          groupLabelById.set(uid, sfu || name || "member");
-        }
       }
     }
-    // Don't count the viewer themselves in the reviewer display.
     groupUserIds.delete(effectiveUserId);
+    if (groupUserIds.size > 0) {
+      const groupUsers = await listUsersByIds([...groupUserIds]);
+      for (const u of groupUsers) {
+        groupLabelById.set(u.id, appDisplayLabelFromRecord(u));
+      }
+      for (const uid of groupUserIds) {
+        if (!groupLabelById.has(uid)) groupLabelById.set(uid, "member");
+      }
+    }
   }
 
   const groupMemberCount = groupUserIds.size;

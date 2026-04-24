@@ -5,6 +5,8 @@ declare module "next-auth" {
     id?: string;
     sfuId?: string | null;
     role?: string;
+    /** User-chosen display alias; falls back to SFU ID in UI when unset. */
+    displayName?: string | null;
   }
 
   interface Session {
@@ -12,11 +14,13 @@ declare module "next-auth" {
       id: string;
       sfuId?: string | null;
       role?: string;
+      displayName?: string | null;
     };
   }
 
   interface JWT {
     sfuId?: string | null;
     role?: string;
+    displayName?: string | null;
   }
 }

@@ -1,5 +1,6 @@
 import { listStudentEnrollmentsForClass } from "@/lib/firestore/enrollments";
 import { listUsersByIds } from "@/lib/firestore/users";
+import { appDisplayLabelFromRecord } from "@/lib/display-name";
 import { StudentPrivilegesManager } from "./student-privileges-manager";
 
 export async function StudentPrivilegesSection({ classId }: { classId: string }) {
@@ -26,8 +27,8 @@ export async function StudentPrivilegesSection({ classId }: { classId: string })
 
   const rows = enrollments.map((e) => {
     const u = userMap.get(e.userId);
-    const label =
-      u?.sfuId && u?.name ? `${u.sfuId} — ${u.name}` : u?.sfuId ?? u?.name ?? e.userId;
+    const shown = u ? appDisplayLabelFromRecord(u) : e.userId;
+    const label = u?.sfuId && shown !== u.sfuId ? `${u.sfuId} — ${shown}` : shown;
     return {
       userId: e.userId,
       label,

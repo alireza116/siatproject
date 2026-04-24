@@ -31,6 +31,12 @@ export async function SiteHeader() {
               >
                 Gallery
               </Link>
+              <Link
+                href="/account"
+                className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Account
+              </Link>
               <SignOutButton />
             </>
           ) : (

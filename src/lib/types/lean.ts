@@ -55,6 +55,7 @@ export type LeanUser = {
   _id: string;
   sfuId?: string;
   name?: string;
+  displayName?: string;
   email?: string;
   image?: string;
   role?: string;

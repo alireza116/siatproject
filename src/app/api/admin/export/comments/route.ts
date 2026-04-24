@@ -4,6 +4,7 @@ import { getClassById } from "@/lib/firestore/classes";
 import { listCommentsForSubmissions } from "@/lib/firestore/comments";
 import { listSubmissionsByClass } from "@/lib/firestore/submissions";
 import { listUsersByIds } from "@/lib/firestore/users";
+import { appDisplayLabelFromRecord } from "@/lib/display-name";
 
 function csvCell(value: unknown): string {
   const s = value == null ? "" : String(value);
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
       sub?.title ?? "",
       sub?.groupName ?? "",
       user?.sfuId ?? "",
-      user?.name ?? "",
+      user ? appDisplayLabelFromRecord(user) : "",
       c.body,
       c.createdAt.toISOString(),
     ]);

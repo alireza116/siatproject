@@ -9,6 +9,8 @@ export type UserRecord = {
   id: string;
   email?: string;
   name?: string;
+  /** User-chosen label shown in the app; if unset, SFU ID (or profile name) is used. */
+  displayName?: string;
   image?: string;
   sfuId?: string;
   casUsername?: string;
@@ -23,6 +25,7 @@ function mapUser(id: string, data: FirebaseFirestore.DocumentData): UserRecord {
     id,
     email: data.email,
     name: data.name,
+    displayName: data.displayName ?? undefined,
     image: data.image,
     sfuId: data.sfuId,
     casUsername: data.casUsername,
@@ -180,6 +183,40 @@ export async function updateUserSfuIdIfFree(userId: string, sfuId: string): Prom
     updatedAt: FieldValue.serverTimestamp(),
   });
   return true;
+}
+
+const DISPLAY_NAME_MAX = 80;
+
+/**
+ * Trimmed display name, or clear field. Does not change OAuth `name`.
+ * Uses `set` + merge when the user doc is missing so saving from Account
+ * still works if the JWT `sub` exists but Firestore never had a row (env
+ * mismatch, failed create, or legacy session).
+ */
+export async function updateUserDisplayName(userId: string, raw: string): Promise<void> {
+  const trimmed = raw.trim().slice(0, DISPLAY_NAME_MAX);
+  const db = getFirestoreDb();
+  const ref = db.collection(COL.users).doc(userId);
+  const snap = await ref.get();
+
+  const patch: Record<string, unknown> = {
+    updatedAt: FieldValue.serverTimestamp(),
+    displayName: trimmed.length > 0 ? trimmed : FieldValue.delete(),
+  };
+
+  if (!snap.exists) {
+    await ref.set(
+      {
+        ...patch,
+        role: "USER",
+        createdAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return;
+  }
+
+  await ref.update(patch);
 }
 
 export async function createUserDemo(input: {

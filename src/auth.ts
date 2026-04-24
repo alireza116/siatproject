@@ -22,11 +22,13 @@ async function loadUserIntoToken(token: JWT): Promise<JWT> {
     sfuId: u.sfuId,
     role: u.role,
     name: u.name,
+    displayName: u.displayName,
     email: u.email,
     image: u.image,
   };
   token.sfuId = lean.sfuId ?? undefined;
   token.role = lean.role;
+  token.displayName = lean.displayName ?? undefined;
   token.name = lean.name ?? token.name;
   token.email = lean.email ?? token.email;
   token.picture = lean.image ?? token.picture;
@@ -81,6 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.sub;
         session.user.sfuId = token.sfuId as string | null | undefined;
         session.user.role = token.role as string | undefined;
+        session.user.displayName = token.displayName as string | null | undefined;
       }
       return session;
     },

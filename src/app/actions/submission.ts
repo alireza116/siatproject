@@ -21,6 +21,7 @@ import {
   updateSubmission,
 } from "@/lib/firestore/submissions";
 import { findUsersBySfuIds, getUserById } from "@/lib/firestore/users";
+import { appDisplayLabel } from "@/lib/display-name";
 import { extractYoutubeVideoIds, isAllowedProjectUrl } from "@/lib/youtube";
 import type { LeanUser } from "@/lib/types/lean";
 import { revalidatePath } from "next/cache";
@@ -105,12 +106,16 @@ export async function createSubmissionAction(formData: FormData) {
   const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
 
   const authorUserIds: string[] = [session.user.id];
-  const authorNames: string[] = [leanMe.name ?? leanMe.sfuId ?? "Student"];
+  const authorNames: string[] = [
+    appDisplayLabel({ displayName: me.displayName, sfuId: me.sfuId, name: me.name }),
+  ];
   const authorSfuIds: string[] = [leanMe.sfuId];
   for (const sfuId of coauthorSfuIds) {
     const u = coauthorUserMap.get(sfuId);
     if (u?.id) authorUserIds.push(u.id);
-    authorNames.push(u?.name ?? sfuId);
+    authorNames.push(
+      appDisplayLabel({ displayName: u?.displayName, sfuId: u?.sfuId ?? sfuId, name: u?.name }),
+    );
     authorSfuIds.push(sfuId);
   }
 
@@ -212,12 +217,22 @@ export async function updateSubmissionAction(formData: FormData) {
   const coauthorUserMap = new Map(coauthorUsers.map((u) => [u.sfuId!, u]));
 
   const newAuthorUserIds: string[] = [sub.createdById];
-  const newAuthorNames: string[] = [creatorLean?.name ?? creatorLean?.sfuId ?? sub.authorNames[0] ?? "Student"];
+  const newAuthorNames: string[] = [
+    creatorDoc
+      ? appDisplayLabel({
+          displayName: creatorDoc.displayName,
+          sfuId: creatorDoc.sfuId,
+          name: creatorDoc.name,
+        })
+      : sub.authorNames[0] ?? "Student",
+  ];
   const newAuthorSfuIds: string[] = [creatorLean?.sfuId ?? sub.authorSfuIds[0] ?? ""];
   for (const sfuId of coauthorSfuIds) {
     const u = coauthorUserMap.get(sfuId);
     if (u?.id) newAuthorUserIds.push(u.id);
-    newAuthorNames.push(u?.name ?? sfuId);
+    newAuthorNames.push(
+      appDisplayLabel({ displayName: u?.displayName, sfuId: u?.sfuId ?? sfuId, name: u?.name }),
+    );
     newAuthorSfuIds.push(sfuId);
   }
 

@@ -15,6 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
+import { appDisplayLabel } from "@/lib/display-name";
 import type { LeanClassFull, LeanEnrollment } from "@/lib/types/lean";
 
 function isTeachingEnrollment(
@@ -153,7 +154,13 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {viewAsUserId ? `Previewing as student` : `Welcome back, ${session.user.sfuId}`}
+            {viewAsUserId
+              ? `Previewing as student`
+              : `Welcome back, ${appDisplayLabel({
+                  displayName: session.user.displayName,
+                  sfuId: session.user.sfuId,
+                  name: session.user.name,
+                })}`}
           </p>
         </div>
         {isAdmin && (
