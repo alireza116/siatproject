@@ -13,7 +13,6 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { RevokeAdminButton, GrantAdminForm } from "@/app/admin/admin-forms";
 import { SeedControls } from "@/app/admin/seed-controls";
-import { BulkSubmissionsVisibilityControls } from "@/components/BulkSubmissionsVisibilityControls";
 import { PermanentClassDeleteForm } from "@/app/admin/permanent-class-delete-form";
 
 type AdminUser = { sfuId: string; name?: string; bootstrap: boolean };
@@ -141,53 +140,6 @@ export default async function AdminPage() {
           </section>
         </>
       )}
-
-      <Separator className="my-8" />
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold">Export data</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Download submissions and comments as CSV for each class. Use{" "}
-            <span className="font-medium text-foreground">All public</span> /{" "}
-            <span className="font-medium text-foreground">All private</span> to set every
-            submission&apos;s gallery visibility for that class at once.
-          </p>
-        </div>
-        {exportClasses.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No classes yet.</p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
-            <ul className="divide-y divide-border">
-              {exportClasses.map((c) => (
-                <li key={c._id} className="flex items-center justify-between gap-4 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{c.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {c.submissionCount} {c.submissionCount === 1 ? "submission" : "submissions"}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    <BulkSubmissionsVisibilityControls classId={c._id} compact />
-                    <a
-                      href={`/api/admin/export/submissions?classId=${c._id}`}
-                      className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
-                    >
-                      Submissions
-                    </a>
-                    <a
-                      href={`/api/admin/export/comments?classId=${c._id}`}
-                      className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
-                    >
-                      Comments
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
 
       <Separator className="my-8" />
 

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { isClassAppManager } from "@/lib/class-access";
 import { getClassById } from "@/lib/firestore/classes";
 import { listSubmissionsByClass } from "@/lib/firestore/submissions";
 
@@ -14,8 +15,8 @@ function csvRow(cells: unknown[]): string {
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "GLOBAL_ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const classId = req.nextUrl.searchParams.get("classId");
@@ -26,6 +27,14 @@ export async function GET(req: NextRequest) {
   const cls = await getClassById(classId);
   if (!cls) {
     return NextResponse.json({ error: "Class not found" }, { status: 404 });
+  }
+
+  const canExport = await isClassAppManager(session.user.id, classId, {
+    globalRole: session.user.role,
+    viewAsActive: false,
+  });
+  if (!canExport) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const subs = await listSubmissionsByClass(classId);
