@@ -12,6 +12,7 @@ export type PublicSubmissionListItem = {
   _id: string;
   title: string;
   groupName: string;
+  description?: string;
   authorNames: string[];
   authorSfuIds: string[];
   classTitle: string;
@@ -113,6 +114,7 @@ export async function listPublicSubmissionsForClass(
       _id: s._id,
       title: s.title,
       groupName: s.groupName,
+      description: s.description,
       authorNames: s.authorNames ?? [],
       authorSfuIds: s.authorSfuIds ?? [],
       classTitle: cls.title,

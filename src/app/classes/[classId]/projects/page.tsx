@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -9,10 +8,10 @@ import { listSubmissionsByClass, toLeanSubmissionFull } from "@/lib/firestore/su
 import { effectiveVisibility } from "@/lib/visibility";
 import type { LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 import { getGroupReviewsForSubmissions } from "@/lib/group-reviews";
+import { ClassProjectsFilterableList } from "@/components/ClassProjectsFilterableList";
 
 export default async function ClassProjectsPage({
   params,
@@ -163,118 +162,47 @@ export default async function ClassProjectsPage({
           </Link>
         </div>
       ) : (
-        <ul className="mt-8 flex flex-col gap-3">
-          {submissions.map((s) => {
-            const vis = effectiveVisibility(s, cls);
-            const thumb = s.youtubeVideoIds?.[0];
-            const r = ratings.get(s._id);
-            const ratingText =
-              !r || r.count === 0
-                ? "Not rated yet"
-                : `${r.average.toFixed(1)} / 5 · ${r.count} ${r.count === 1 ? "rating" : "ratings"}`;
+        <div className="mt-8">
+          <ClassProjectsFilterableList
+            classId={classId}
+            showGroupHints={showGroupHints}
+            rows={submissions.map((s) => {
+              const vis = effectiveVisibility(s, cls);
+              const r = ratings.get(s._id);
+              const ratingText =
+                !r || r.count === 0
+                  ? "Not rated yet"
+                  : `${r.average.toFixed(1)} / 5 · ${r.count} ${r.count === 1 ? "rating" : "ratings"}`;
 
-            const isOwnGroup = mySubmissionIds.has(s._id);
-            const reviewerIds = showGroupHints && !isOwnGroup ? reviewsByGroup.get(s._id) : undefined;
-            const reviewerLabels = reviewerIds
-              ? [...reviewerIds]
-                  .map((uid) => groupLabelById.get(uid) ?? "member")
-                  .sort((a, b) => a.localeCompare(b))
-              : [];
-            const reviewed = reviewerLabels.length > 0;
-            const needsReview = showGroupHints && !isOwnGroup && !reviewed;
+              const isOwnGroup = mySubmissionIds.has(s._id);
+              const reviewerIds = showGroupHints && !isOwnGroup ? reviewsByGroup.get(s._id) : undefined;
+              const reviewerLabels = reviewerIds
+                ? [...reviewerIds]
+                    .map((uid) => groupLabelById.get(uid) ?? "member")
+                    .sort((a, b) => a.localeCompare(b))
+                : [];
+              const reviewed = reviewerLabels.length > 0;
+              const needsReview = showGroupHints && !isOwnGroup && !reviewed;
 
-            return (
-              <li key={s._id}>
-                <Link
-                  href={`/classes/${classId}/submissions/${s._id}`}
-                  className={cn(
-                    "group flex flex-col gap-4 overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition hover:border-foreground/20 hover:shadow sm:flex-row sm:items-stretch sm:p-4",
-                    isOwnGroup
-                      ? "border-border"
-                      : reviewed
-                      ? "border-emerald-500/30"
-                      : needsReview
-                      ? "border-amber-500/40"
-                      : "border-border",
-                  )}
-                >
-                  <div className="relative w-full shrink-0 overflow-hidden rounded-lg bg-muted sm:w-56 md:w-64">
-                    <div className="relative aspect-video">
-                      {thumb ? (
-                        <Image
-                          src={`https://img.youtube.com/vi/${thumb}/mqdefault.jpg`}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 224px, 256px"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                          No video
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:py-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-medium text-foreground">{s.title}</p>
-                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                        {isOwnGroup && showGroupHints && (
-                          <Badge
-                            variant="outline"
-                            className="border-foreground/20 text-[10px] text-foreground"
-                          >
-                            Your group
-                          </Badge>
-                        )}
-                        {!isOwnGroup && reviewed && (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400"
-                          >
-                            Reviewed by your group
-                          </Badge>
-                        )}
-                        {needsReview && (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-400"
-                          >
-                            Needs review
-                          </Badge>
-                        )}
-                        <Badge
-                          variant={vis === "PUBLIC" ? "secondary" : "outline"}
-                          className="text-[10px]"
-                        >
-                          {vis === "PUBLIC" ? "Public" : "Class only"}
-                        </Badge>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {s.groupName}
-                      {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
-                    </p>
-                    {s.description && (
-                      <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {s.description}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">Rating: {ratingText}</p>
-                    {!isOwnGroup && reviewed && (
-                      <p className="text-xs text-emerald-700 dark:text-emerald-400">
-                        Reviewed by: {reviewerLabels.join(", ")}
-                      </p>
-                    )}
-                    <p className="mt-auto text-xs text-muted-foreground">
-                      {new Date(s.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+              return {
+                id: s._id,
+                title: s.title,
+                groupName: s.groupName,
+                description: s.description,
+                authorNames: s.authorNames ?? [],
+                authorSfuIds: s.authorSfuIds ?? [],
+                youtubeThumbId: s.youtubeVideoIds?.[0],
+                visibility: vis,
+                ratingText,
+                createdAtIso: s.createdAt.toISOString(),
+                isOwnGroup,
+                reviewed,
+                needsReview,
+                reviewerLabels,
+              };
+            })}
+          />
+        </div>
       )}
     </div>
   );
