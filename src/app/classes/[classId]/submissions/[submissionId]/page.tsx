@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { getViewAsUserId } from "@/lib/view-as";
 import { getCommentVoteSummary, getRatingStatsForSubmission } from "@/lib/feedback";
 import { appDisplayLabelFromRecord } from "@/lib/display-name";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 
 export default async function SubmissionDetailPage({
   params,
@@ -176,8 +177,17 @@ export default async function SubmissionDetailPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{sub.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {sub.groupName}
-            {sub.authorSfuIds?.length > 0 && ` · ${sub.authorSfuIds.join(", ")}`}
+            {[
+              sub.groupName?.trim(),
+              formatPublicAuthorsLine(
+                sub.authorNames ?? [],
+                sub.authorSfuIds ?? [],
+                true,
+                true,
+              ),
+            ]
+              .filter((x) => x && x.length > 0)
+              .join(" · ")}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant={vis === "PUBLIC" ? "secondary" : "outline"} className="text-[10px]">

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PublicSubmissionPagePayload } from "@/lib/gallery-public-submission-page";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 
 type Props = {
   payload: PublicSubmissionPagePayload;
@@ -91,12 +92,13 @@ export function PublicSubmissionPageView({
             if (cls.publicShowGroupName !== false && sub.groupName) {
               bits.push(sub.groupName);
             }
-            if (cls.publicShowAuthorNames !== false && sub.authorNames?.length > 0) {
-              bits.push(sub.authorNames.join(", "));
-            }
-            if (cls.publicShowAuthorSfuIds !== false && sub.authorSfuIds?.length > 0) {
-              bits.push(sub.authorSfuIds.join(", "));
-            }
+            const authorsLine = formatPublicAuthorsLine(
+              sub.authorNames ?? [],
+              sub.authorSfuIds ?? [],
+              cls.publicShowAuthorNames !== false,
+              cls.publicShowAuthorSfuIds !== false,
+            );
+            if (authorsLine) bits.push(authorsLine);
             return bits.length > 0 ? (
               <p className="mt-1 text-sm text-muted-foreground">{bits.join(" · ")}</p>
             ) : null;

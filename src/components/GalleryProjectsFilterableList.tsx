@@ -8,6 +8,7 @@ import { projectMatchesSearchFields } from "@/lib/project-search";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 
 export type GalleryProjectRow = {
   _id: string;
@@ -114,12 +115,17 @@ export function GalleryProjectsFilterableList({
                   {cls.publicShowGroupName !== false && s.groupName && (
                     <p className="text-xs text-muted-foreground">{s.groupName}</p>
                   )}
-                  {cls.publicShowAuthorNames !== false && s.authorNames.length > 0 && (
-                    <p className="text-xs text-muted-foreground">{s.authorNames.join(", ")}</p>
-                  )}
-                  {cls.publicShowAuthorSfuIds !== false && s.authorSfuIds.length > 0 && (
-                    <p className="text-xs text-muted-foreground">{s.authorSfuIds.join(", ")}</p>
-                  )}
+                  {(() => {
+                    const authorsLine = formatPublicAuthorsLine(
+                      s.authorNames,
+                      s.authorSfuIds,
+                      cls.publicShowAuthorNames !== false,
+                      cls.publicShowAuthorSfuIds !== false,
+                    );
+                    return authorsLine ? (
+                      <p className="text-xs text-muted-foreground">{authorsLine}</p>
+                    ) : null;
+                  })()}
                   {s.description && (
                     <p className="line-clamp-2 text-xs text-muted-foreground">{s.description}</p>
                   )}

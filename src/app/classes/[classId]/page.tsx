@@ -11,6 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 import { getViewAsUserId } from "@/lib/view-as";
 import { isSubmissionAuthor } from "@/lib/submission-access";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
@@ -93,8 +94,17 @@ export default async function ClassPage({
               <div className="min-w-0">
                 <p className="font-medium text-foreground">{s.title}</p>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {s.groupName}
-                  {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                  {[
+                    s.groupName?.trim(),
+                    formatPublicAuthorsLine(
+                      s.authorNames ?? [],
+                      s.authorSfuIds ?? [],
+                      true,
+                      true,
+                    ),
+                  ]
+                    .filter((x): x is string => !!x?.length)
+                    .join(" · ")}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {(() => {

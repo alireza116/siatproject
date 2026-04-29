@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 
 export type ClassProjectRow = {
   id: string;
@@ -145,8 +146,17 @@ export function ClassProjectsFilterableList({ classId, showGroupHints, rows }: P
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {s.groupName}
-                    {s.authorSfuIds.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                    {[
+                      s.groupName?.trim(),
+                      formatPublicAuthorsLine(
+                        s.authorNames,
+                        s.authorSfuIds,
+                        true,
+                        true,
+                      ),
+                    ]
+                      .filter((x): x is string => !!x?.length)
+                      .join(" · ")}
                   </p>
                   {s.description && (
                     <p className="line-clamp-2 text-xs text-muted-foreground">{s.description}</p>

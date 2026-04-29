@@ -9,6 +9,7 @@ import type { LeanClassFull, LeanSubmissionFull } from "@/lib/types/lean";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
+import { formatPublicAuthorsLine } from "@/lib/gallery-authors-display";
 
 export default async function MySubmissionsPage() {
   const session = await auth();
@@ -70,8 +71,17 @@ export default async function MySubmissionsPage() {
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         <span className="font-medium text-foreground/90">{cls.title}</span>
                         {" · "}
-                        {s.groupName}
-                        {s.authorSfuIds?.length > 0 && ` · ${s.authorSfuIds.join(", ")}`}
+                        {[
+                          s.groupName?.trim(),
+                          formatPublicAuthorsLine(
+                            s.authorNames ?? [],
+                            s.authorSfuIds ?? [],
+                            true,
+                            true,
+                          ),
+                        ]
+                          .filter((x): x is string => !!x?.length)
+                          .join(" · ")}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {(() => {
