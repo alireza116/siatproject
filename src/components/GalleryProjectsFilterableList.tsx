@@ -23,6 +23,8 @@ export type GalleryProjectRow = {
 
 type Props = {
   classId: string;
+  /** Base path without trailing slash, e.g. `/gallery` or `/embed/gallery`. */
+  galleryBasePath?: string;
   cls: Pick<
     LeanClassFull,
     "publicShowGroupName" | "publicShowAuthorNames" | "publicShowAuthorSfuIds"
@@ -30,7 +32,12 @@ type Props = {
   rows: GalleryProjectRow[];
 };
 
-export function GalleryProjectsFilterableList({ classId, cls, rows }: Props) {
+export function GalleryProjectsFilterableList({
+  classId,
+  galleryBasePath = "/gallery",
+  cls,
+  rows,
+}: Props) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -77,7 +84,7 @@ export function GalleryProjectsFilterableList({ classId, cls, rows }: Props) {
           {filtered.map((s) => (
             <li key={s._id}>
               <Link
-                href={`/gallery/${classId}/${s._id}`}
+                href={`${galleryBasePath}/${classId}/${s._id}`}
                 className="group flex flex-col gap-4 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition hover:border-foreground/20 hover:shadow sm:flex-row sm:items-stretch sm:p-4"
               >
                 <div className="relative w-full shrink-0 overflow-hidden rounded-lg bg-muted sm:w-56 md:w-64">

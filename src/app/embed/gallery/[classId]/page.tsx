@@ -2,13 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { listPublicSubmissionsForClass } from "@/lib/gallery";
 import { getClassById, toLeanClassFull } from "@/lib/firestore/classes";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { getRatingStatsBySubmissionIds } from "@/lib/feedback";
 import { GalleryProjectsFilterableList } from "@/components/GalleryProjectsFilterableList";
-import { ShareClassGalleryButton } from "@/components/gallery/ShareClassGalleryButton";
 
-export default async function ClassGalleryPage({
+/** Public class gallery without site navigation (opened from shared `/embed/gallery/[classId]` links). */
+export default async function EmbedClassGalleryPage({
   params,
 }: {
   params: Promise<{ classId: string }>;
@@ -24,21 +22,19 @@ export default async function ClassGalleryPage({
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
-      <Link
-        href="/gallery"
-        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2 text-muted-foreground")}
-      >
-        ← Gallery
-      </Link>
-
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{cls.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <Link href="/" className="hover:text-foreground hover:underline">
+              SFU Project Hub
+            </Link>
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{cls.title}</h1>
           {cls.description && (
             <p className="mt-1 text-sm text-muted-foreground">{cls.description}</p>
           )}
+          <p className="mt-2 text-xs text-muted-foreground">Public projects</p>
         </div>
-        <ShareClassGalleryButton classId={classId} />
       </div>
 
       {items.length === 0 ? (
@@ -49,6 +45,7 @@ export default async function ClassGalleryPage({
         <div className="mt-8">
           <GalleryProjectsFilterableList
             classId={classId}
+            galleryBasePath="/embed/gallery"
             cls={{
               publicShowGroupName: cls.publicShowGroupName,
               publicShowAuthorNames: cls.publicShowAuthorNames,

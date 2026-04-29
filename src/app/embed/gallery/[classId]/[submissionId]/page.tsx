@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { PublicSubmissionPageView } from "@/components/gallery/PublicSubmissionPageView";
 import { loadPublicSubmissionPageData } from "@/lib/gallery-public-submission-page";
 
-export default async function PublicSubmissionPage({
+export default async function EmbedPublicSubmissionPage({
   params,
 }: {
   params: Promise<{ classId: string; submissionId: string }>;
@@ -14,9 +14,9 @@ export default async function PublicSubmissionPage({
   return (
     <PublicSubmissionPageView
       payload={payload}
-      galleryBasePath="/gallery"
-      asideStickyClassName="lg:top-[4.5rem]"
-      asideScrollMaxClassName="lg:max-h-[calc(100vh-5.5rem)]"
+      galleryBasePath="/embed/gallery"
+      asideStickyClassName="lg:top-6"
+      asideScrollMaxClassName="lg:max-h-[calc(100vh-3rem)]"
     />
   );
 }
